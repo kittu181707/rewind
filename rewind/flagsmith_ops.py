@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import time
+from pathlib import Path
 from typing import Any, Callable
 
 from rewind.approvals import ApprovalToken
@@ -207,3 +208,57 @@ class FlagsmithOps:
         args.extend(["--environment", env_key, "--yes"])
         _, record = self._run_cli(args)
         return record
+
+    def create_segment(
+        self,
+        name: str,
+        rules_file: Path | str,
+        approval: ApprovalToken | None,
+        description: str = "",
+    ) -> CommandRecord:
+        if not isinstance(approval, ApprovalToken) or approval.phase != "seed":
+            raise FlagsmithOpsError("Seed ApprovalToken is required to create a segment")
+        args = ["segment", "create", name, "--rules", f"@{rules_file}"]
+        if description:
+            args.extend(["--description", description])
+        _, record = self._run_cli(args)
+        return record
+
+    def delete_segment(self, name: str, approval: ApprovalToken | None) -> CommandRecord:
+        if not isinstance(approval, ApprovalToken) or approval.phase != "seed":
+            raise FlagsmithOpsError("Seed ApprovalToken is required to delete a segment")
+        _, record = self._run_cli(["segment", "delete", name, "--yes"])
+        return record
+
+    def clear_segment_override_if_present(
+        self,
+        environment: str,
+        flag: str,
+        segment: str,
+        approval: ApprovalToken | None,
+    ) -> bool:
+        if not isinstance(approval, ApprovalToken) or approval.environment != environment:
+            raise FlagsmithOpsError(f"Valid ApprovalToken for {environment!r} is required")
+        if self.get_segment_override(environment, flag, segment) is None:
+            return False
+        self.apply_operation(environment, flag, f"segment:{segment}", "delete_override", approval)
+        return True
+
+    def clear_identity_override_if_present(
+        self,
+        environment: str,
+        flag: str,
+        identifier: str,
+        approval: ApprovalToken | None,
+    ) -> bool:
+        if not isinstance(approval, ApprovalToken) or approval.environment != environment:
+            raise FlagsmithOpsError(f"Valid ApprovalToken for {environment!r} is required")
+        env_key = self._resolve_env_key(environment)
+        _, rec = self._run_cli(
+            ["flag", "get", flag, "--identifier", identifier, "--environment", env_key, "--json"],
+            check=False,
+        )
+        if rec.exit_code != 0:
+            return False
+        self._run_cli(["flag", "delete", flag, "--identifier", identifier, "--environment", env_key, "--yes"])
+        return True

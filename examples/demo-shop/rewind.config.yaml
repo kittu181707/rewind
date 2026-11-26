@@ -1,0 +1,29 @@
+project: demo-shop
+flagsmith:
+  rehearsal: { environment: rehearsal, key_env: FLAGSMITH_ENV_KEY_REHEARSAL }
+  target:    { environment: demo-target, key_env: FLAGSMITH_ENV_KEY_TARGET }
+app:
+  start:   "python examples/demo-shop/app.py --port {port}"
+  reset:   "python examples/demo-shop/reset.py --db {db}"
+  journey: "python examples/demo-shop/journey.py --base-url {base_url} --phase {phase}"
+  rehearsal_port: 8001
+  target_port: 8002
+source_paths: ["examples/demo-shop/app.py"]
+rollback:
+  flag: checkout_v2
+  to: off
+  goal: "every user executes the legacy checkout and keeps their latest cart"
+users:
+  - { id: alice, traits: { is_vip: true },  role: affected }
+  - { id: carol, traits: { is_vip: true },  role: affected }
+  - { id: bob,   traits: { is_vip: false }, role: control }
+allowed:
+  flags: [checkout_v2, cart_compat_reader]
+  scopes: [environment_default, "segment:vip_users"]
+  operations: [set_on, set_off, delete_override]
+agent:
+  provider: groq
+  model: openai/gpt-oss-120b
+  key_env: GROQ_API_KEY
+  max_attempts: 3
+  fallback: { provider: gemini, model: gemini-3.6-flash, key_env: GEMINI_API_KEY }

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+import math
 import os
 import time
 from typing import Any, Callable, Protocol
@@ -17,6 +20,7 @@ _ENDPOINTS = {
     "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
 }
 TIMEOUT_S = 30
+MAX_RETRY_DELAY_S = 10.0
 
 
 class LLMError(RuntimeError):
@@ -24,7 +28,25 @@ class LLMError(RuntimeError):
 
 
 class _TransientLLMError(LLMError):
-    pass
+    def __init__(self, message: str, *, retry_delay: float = 0.0) -> None:
+        super().__init__(message)
+        self.retry_delay = retry_delay
+
+
+def _retry_after_delay(header: str | None) -> float:
+    if not header:
+        return 1.0
+    try:
+        delay = float(header)
+    except ValueError:
+        try:
+            retry_at = parsedate_to_datetime(header)
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=timezone.utc)
+            delay = (retry_at - datetime.now(timezone.utc)).total_seconds()
+        except (OverflowError, TypeError, ValueError):
+            return 1.0
+    return max(0.0, min(MAX_RETRY_DELAY_S, delay)) if math.isfinite(delay) else 1.0
 
 
 @dataclass(frozen=True)
@@ -45,16 +67,22 @@ class ChatModel(Protocol):
 
 
 class LLMAdapter:
-    def __init__(self, config: AgentConfig, *, post: Callable[..., requests.Response] | None = None) -> None:
+    def __init__(
+        self, config: AgentConfig, *, post: Callable[..., requests.Response] | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
         self.config = config
         self._post = post or requests.post
+        self._sleep = sleep
         self.calls: list[LLMCall] = []
 
     def complete(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> dict[str, Any]:
         """Retry the primary once on a transient failure, then try the fallback once."""
         try:
             return self._call(self.config, messages, tools)
-        except _TransientLLMError:
+        except _TransientLLMError as first:
+            if first.retry_delay:
+                self._sleep(first.retry_delay)
             try:
                 return self._call(self.config, messages, tools)
             except _TransientLLMError:
@@ -96,6 +124,9 @@ class LLMAdapter:
                 raise LLMError(f"{label}: {type(exc).__name__}") from None
 
             status = response.status_code
+            if status == 429:
+                outcome = "rate_limited"
+                raise _TransientLLMError(f"{label}: HTTP 429", retry_delay=_retry_after_delay(response.headers.get("Retry-After")))
             if 500 <= status < 600:
                 outcome = "server_error"
                 raise _TransientLLMError(f"{label}: HTTP {status}")

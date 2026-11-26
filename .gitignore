@@ -9,3 +9,4 @@ __pycache__/
 .artifacts/
 artifacts/
 *.egg-info/
+.journey_state.json

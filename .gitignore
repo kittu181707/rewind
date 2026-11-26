@@ -10,3 +10,4 @@ __pycache__/
 artifacts/
 *.egg-info/
 .journey_state.json
+.rewind_state/

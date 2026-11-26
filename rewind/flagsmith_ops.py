@@ -10,14 +10,14 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
-from rewind.approvals import ApprovalToken
+from rewind.approvals import ApprovalError, ApprovalToken, _consume_token
 from rewind.config import RewindConfig
 
 
 class FlagsmithOpsError(RuntimeError):
-    """Raised on allowlist violations, missing approvals, or CLI execution failures."""
+    """Raised on allowlist violations, missing approvals, drift, or CLI failures."""
 
 
 @dataclass
@@ -31,8 +31,8 @@ class CommandRecord:
 
 RunnerFn = Callable[[list[str], dict[str, str]], subprocess.CompletedProcess[str]]
 
-SETUP_PHASES = frozenset({"seed", "cleanup"})
 SECRET_FIELD_TERMS = ("key", "token", "secret", "password", "credential", "auth")
+MIN_ENV_SECRET_LEN = 8
 
 
 def _default_runner(args: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
@@ -47,7 +47,7 @@ def _default_runner(args: list[str], env: dict[str, str]) -> subprocess.Complete
 
 
 class FlagsmithOps:
-    """Executes allowlisted Flagsmith CLI operations with strict redaction."""
+    """Executes allowlisted Flagsmith CLI operations with strict redaction and approvals."""
 
     def __init__(
         self,
@@ -64,11 +64,15 @@ class FlagsmithOps:
 
     def _collect_env_secrets(self) -> None:
         for k, v in os.environ.items():
-            if v and any(term in k.upper() for term in ("KEY", "TOKEN", "SECRET", "PASSWORD")):
+            if (
+                v
+                and len(v) >= MIN_ENV_SECRET_LEN
+                and any(term in k.upper() for term in ("KEY", "TOKEN", "SECRET", "PASSWORD"))
+            ):
                 self._secrets.add(v)
 
     def register_secret(self, value: str) -> None:
-        if value and len(value) >= 6:
+        if value and len(value) >= MIN_ENV_SECRET_LEN:
             self._secrets.add(value)
 
     def redact(self, text: str) -> str:
@@ -111,7 +115,6 @@ class FlagsmithOps:
                 if wants_json and proc.returncode == 0:
                     json_err = exc
 
-        # Redact only after harvesting any newly returned JSON secrets.
         display_cmd = self.redact(" ".join(["flagsmith", *cli_args]))
         stdout_redacted = self.redact(raw_stdout).strip()
         stderr_redacted = self.redact(raw_stderr).strip()
@@ -145,18 +148,6 @@ class FlagsmithOps:
         elif isinstance(payload, list):
             for item in payload:
                 self._learn_json_secrets(item)
-
-    def _require_setup_authority(self, environment: str, approval: ApprovalToken | None) -> None:
-        if not isinstance(approval, ApprovalToken):
-            raise FlagsmithOpsError("Explicit setup/cleanup ApprovalToken is required")
-        if approval.phase not in SETUP_PHASES:
-            raise FlagsmithOpsError(
-                f"Setup/cleanup authority requires phase in {sorted(SETUP_PHASES)}, got {approval.phase!r}"
-            )
-        if environment != "project" and approval.environment != environment:
-            raise FlagsmithOpsError(
-                f"Setup/cleanup ApprovalToken environment mismatch: {approval.environment!r} != {environment!r}"
-            )
 
     def list_environments(self) -> list[dict[str, Any]]:
         data, _ = self._run_cli(["environment", "list", "--json"])
@@ -218,19 +209,7 @@ class FlagsmithOps:
         if scope == "environment_default" and operation == "delete_override":
             raise FlagsmithOpsError("Cannot use delete_override on environment_default")
 
-    def apply_operation(
-        self,
-        environment: str,
-        flag: str,
-        scope: str,
-        operation: str,
-        approval: ApprovalToken | None,
-    ) -> CommandRecord:
-        if not isinstance(approval, ApprovalToken) or approval.environment != environment:
-            raise FlagsmithOpsError(f"Valid ApprovalToken for {environment!r} is required to mutate Flagsmith")
-        self.validate_operation(environment, flag, scope, operation)
-        env_key = self._resolve_env_key(environment)
-
+    def _build_flag_args(self, flag: str, scope: str, operation: str, env_key: str) -> list[str]:
         if operation == "delete_override":
             args = ["flag", "delete", flag]
         elif operation == "set_on":
@@ -248,8 +227,65 @@ class FlagsmithOps:
             raise FlagsmithOpsError(f"Unsupported scope {scope!r}")
 
         args.extend(["--environment", env_key, "--yes"])
-        _, record = self._run_cli(args)
-        return record
+        return args
+
+    def apply_operations(
+        self,
+        environment: str,
+        operations: Iterable[tuple[str, str, str]],
+        approval: ApprovalToken | None,
+    ) -> list[CommandRecord]:
+        """Validate, verify token & target drift, then apply an exact sequence of operations."""
+        op_tuple = tuple((str(f), str(s), str(o)) for f, s, o in operations)
+        if not op_tuple:
+            raise FlagsmithOpsError("At least one operation is required")
+
+        for flag, scope, op in op_tuple:
+            self.validate_operation(environment, flag, scope, op)
+
+        rehearsal_env = self.config.flagsmith.rehearsal.environment
+        target_env = self.config.flagsmith.target.environment
+        try:
+            verified_token = _consume_token(
+                approval,
+                environment=environment,
+                rehearsal_env=rehearsal_env,
+                target_env=target_env,
+                operations=op_tuple,
+                allow_setup=True,
+            )
+        except ApprovalError as exc:
+            raise FlagsmithOpsError(str(exc)) from exc
+
+        if environment == target_env:
+            from rewind.snapshot import take_snapshot
+
+            current = take_snapshot(self, self.config, environment)
+            if current.hash != verified_token.snapshot_hash:
+                raise FlagsmithOpsError(
+                    f"Target snapshot drifted since Gate 2 approval "
+                    f"(expected={verified_token.snapshot_hash}, current={current.hash}); "
+                    f"Gate 2 approval required again"
+                )
+
+        env_key = self._resolve_env_key(environment)
+        records: list[CommandRecord] = []
+        for flag, scope, op in op_tuple:
+            _, rec = self._run_cli(self._build_flag_args(flag, scope, op, env_key))
+            records.append(rec)
+        return records
+
+    def apply_operation(
+        self,
+        environment: str,
+        flag: str,
+        scope: str,
+        operation: str,
+        approval: ApprovalToken | None,
+    ) -> CommandRecord:
+        """Validate and apply a single Flagsmith operation using a registered approval token."""
+        records = self.apply_operations(environment, [(flag, scope, operation)], approval)
+        return records[0]
 
     def create_segment(
         self,
@@ -258,7 +294,18 @@ class FlagsmithOps:
         approval: ApprovalToken | None,
         description: str = "",
     ) -> CommandRecord:
-        self._require_setup_authority("project", approval)
+        try:
+            _consume_token(
+                approval,
+                environment="project",
+                rehearsal_env=self.config.flagsmith.rehearsal.environment,
+                target_env=self.config.flagsmith.target.environment,
+                operations=(),
+                allow_setup=True,
+            )
+        except ApprovalError as exc:
+            raise FlagsmithOpsError(str(exc)) from exc
+
         args = ["segment", "create", name, "--rules", f"@{rules_file}"]
         if description:
             args.extend(["--description", description])
@@ -266,7 +313,18 @@ class FlagsmithOps:
         return record
 
     def delete_segment(self, name: str, approval: ApprovalToken | None) -> CommandRecord:
-        self._require_setup_authority("project", approval)
+        try:
+            _consume_token(
+                approval,
+                environment="project",
+                rehearsal_env=self.config.flagsmith.rehearsal.environment,
+                target_env=self.config.flagsmith.target.environment,
+                operations=(),
+                allow_setup=True,
+            )
+        except ApprovalError as exc:
+            raise FlagsmithOpsError(str(exc)) from exc
+
         _, record = self._run_cli(["segment", "delete", name, "--yes"])
         return record
 
@@ -277,10 +335,14 @@ class FlagsmithOps:
         segment: str,
         approval: ApprovalToken | None,
     ) -> bool:
-        self._require_setup_authority(environment, approval)
+        """Setup-only helper to clear a segment override in rehearsal using a setup token."""
+        if environment == self.config.flagsmith.target.environment:
+            raise FlagsmithOpsError("Setup cleanup cannot mutate the target environment")
         self.validate_operation(environment, flag, f"segment:{segment}", "delete_override")
         if self.get_segment_override(environment, flag, segment) is None:
             return False
+        if not isinstance(approval, ApprovalToken) or approval.phase != "setup":
+            raise FlagsmithOpsError("Setup token (mint_setup_token) is required for setup cleanup")
         self.apply_operation(environment, flag, f"segment:{segment}", "delete_override", approval)
         return True
 
@@ -291,8 +353,9 @@ class FlagsmithOps:
         identifier: str,
         approval: ApprovalToken | None,
     ) -> bool:
-        """Setup/cleanup-only helper to remove stale overrides for configured test users."""
-        self._require_setup_authority(environment, approval)
+        """Setup-only helper to remove stale overrides for configured users in rehearsal."""
+        if environment == self.config.flagsmith.target.environment:
+            raise FlagsmithOpsError("Setup cleanup cannot mutate the target environment")
         if environment not in self.config.allowed_environments():
             raise FlagsmithOpsError(f"Environment {environment!r} is not in allowlist")
         if flag not in self.config.allowed.flags:
@@ -303,8 +366,23 @@ class FlagsmithOps:
         if identifier not in configured_users:
             raise FlagsmithOpsError(f"Identifier {identifier!r} is not a configured user")
 
-        env_key = self._resolve_env_key(environment)
+        try:
+            _consume_token(
+                approval,
+                environment=environment,
+                rehearsal_env=self.config.flagsmith.rehearsal.environment,
+                target_env=self.config.flagsmith.target.environment,
+                operations=((flag, f"identity:{identifier}", "delete_override"),),
+                allow_setup=True,
+            )
+        except ApprovalError as exc:
+            raise FlagsmithOpsError(str(exc)) from exc
+
+        if not isinstance(approval, ApprovalToken) or approval.phase != "setup":
+            raise FlagsmithOpsError("Setup token (mint_setup_token) is required for identity cleanup")
+
         if self.get_identity_override(environment, flag, identifier) is None:
             return False
+        env_key = self._resolve_env_key(environment)
         self._run_cli(["flag", "delete", flag, "--identifier", identifier, "--environment", env_key, "--yes"])
         return True

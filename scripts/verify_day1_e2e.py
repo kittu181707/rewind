@@ -22,7 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from rewind.approvals import issue_token
+from rewind.approvals import gate1_rehearsal, gate2_target, mint_setup_token
 from rewind.config import RewindConfig, load_config
 from rewind.flagsmith_ops import FlagsmithOps, FlagsmithOpsError
 from rewind.snapshot import take_snapshot
@@ -124,24 +124,26 @@ def _inspect_db_writes(db_path: Path, label: str) -> list[str]:
 
 def _verify(
     cfg: RewindConfig,
+    environment: str,
     base_url: str,
     phase: str,
     state_file: Path,
     journey_out_file: Path,
-    expect_flags: dict[str, bool] | None = None,
+    expect_flags: dict[str, Any] | None = None,
     eval_timeout: float = 30.0,
 ) -> VerificationResult:
-    extra = [
-        "--config",
-        str(REPO_ROOT / "examples" / "demo-shop" / "rewind.config.yaml"),
-        "--state-file",
-        str(state_file),
-        "--eval-timeout",
-        str(eval_timeout),
-    ]
+    extra = ["--eval-timeout", str(eval_timeout)]
     if expect_flags is not None:
         extra.extend(["--expect-json", json.dumps(expect_flags)])
-    res = verify_journey(cfg, base_url=base_url, phase=phase, extra_args=extra, poll_eval=False)
+    res = verify_journey(
+        cfg,
+        base_url=base_url,
+        phase=phase,
+        environment=environment,
+        state_file=state_file,
+        extra_args=extra,
+        poll_eval=False,
+    )
     journey_out_file.parent.mkdir(parents=True, exist_ok=True)
     journey_out_file.write_text(
         json.dumps(
@@ -185,6 +187,62 @@ def _flush_evidence(
     summary_path = out_dir / "summary.json"
     summary_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return summary_path
+
+
+def _apply_rehearsal(
+    ops: FlagsmithOps,
+    env: str,
+    flag: str,
+    scope: str,
+    operation: str,
+    reason: str,
+) -> None:
+    tok = gate1_rehearsal(
+        f"E2E rehearsal: {flag} {scope} {operation} ({reason})",
+        auto_approve=True,
+        output_fn=lambda _: None,
+    )
+    ops.apply_operation(env, flag, scope, operation, tok)
+
+
+def _apply_target(
+    ops: FlagsmithOps,
+    cfg: RewindConfig,
+    target_env: str,
+    operations: list[tuple[str, str, str]],
+    target_log: list[str],
+    note: str,
+) -> None:
+    snap = take_snapshot(ops, cfg, target_env)
+    tok = gate2_target(
+        {"environment": target_env, "operations": operations, "note": note},
+        snap.hash,
+        auto_approve=True,
+        output_fn=lambda _: None,
+    )
+    ops.apply_operations(target_env, operations, tok)
+    for flag, scope, op in operations:
+        target_log.append(f"[{target_env}] apply ({note}): {flag} {scope} {op}")
+
+
+def _prepare_target_case_a(
+    ops: FlagsmithOps,
+    cfg: RewindConfig,
+    target_env: str,
+    target_log: list[str],
+) -> None:
+    """Bring demo-target cleanly to Case A baseline via Gate 2 approvals (never setup tokens)."""
+    snap = take_snapshot(ops, cfg, target_env)
+    ops_needed: list[tuple[str, str, str]] = []
+    for flag in cfg.allowed.flags:
+        if flag in snap.state["flags"] and snap.state["flags"][flag]["overrides"]:
+            for seg in snap.state["flags"][flag]["overrides"]:
+                ops_needed.append((flag, f"segment:{seg}", "delete_override"))
+    ops_needed.extend([
+        ("checkout_v2", "environment_default", "set_on"),
+        ("cart_compat_reader", "environment_default", "set_off"),
+    ])
+    _apply_target(ops, cfg, target_env, ops_needed, target_log, "seed Case A baseline")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -257,12 +315,14 @@ def main(argv: list[str] | None = None) -> int:
         _reset_db(rehearsal_db, "Case A", fixture_writes)
         proc = _start_shop(cfg.app.rehearsal_port, rehearsal_db, rehearsal_key)
 
-        prep = _verify(cfg, rehearsal_url, "prepare", rehearsal_state, next_journey_path("case_a_prepare"))
+        prep = _verify(cfg, rehearsal_env, rehearsal_url, "prepare", rehearsal_state, next_journey_path("case_a_prepare"))
         assert prep.ok, f"Case A prepare failed: {prep.summary}"
 
-        tok = issue_token("rehearsal", rehearsal_env)
-        ops.apply_operation(rehearsal_env, "checkout_v2", "environment_default", "set_off", tok)
-        v_rb = _verify(cfg, rehearsal_url, "verify", rehearsal_state, next_journey_path("case_a_rollback"), {"checkout_v2": False})
+        _apply_rehearsal(ops, rehearsal_env, "checkout_v2", "environment_default", "set_off", "Case A rollback")
+        v_rb = _verify(
+            cfg, rehearsal_env, rehearsal_url, "verify", rehearsal_state, next_journey_path("case_a_rollback"),
+            {"checkout_v2": False},
+        )
         record_or_fail(CaseRow(
             "Case A",
             "Rollback only",
@@ -282,20 +342,15 @@ def main(argv: list[str] | None = None) -> int:
 
         blocked = False
         try:
-            ops.apply_operation(rehearsal_env, "cart_compat_reader", "identity:alice", "set_on", tok)
+            _apply_rehearsal(ops, rehearsal_env, "cart_compat_reader", "identity:alice", "set_on", "blocked scope")
         except FlagsmithOpsError:
             blocked = True
         assert blocked, "Default config should block identity:alice"
 
-        tok_id = issue_token("rehearsal-negative-test", rehearsal_env)
-        tok_cleanup = issue_token("cleanup", rehearsal_env)
-        ops_identity.apply_operation(rehearsal_env, "cart_compat_reader", "identity:alice", "set_on", tok_id)
+        _apply_rehearsal(ops_identity, rehearsal_env, "cart_compat_reader", "identity:alice", "set_on", "Case A negative identity test")
         try:
             v_id = _verify(
-                cfg,
-                rehearsal_url,
-                "verify",
-                rehearsal_state,
+                cfg, rehearsal_env, rehearsal_url, "verify", rehearsal_state,
                 next_journey_path("case_a_identity_alice"),
                 {"checkout_v2": False},
                 eval_timeout=15.0,
@@ -315,15 +370,13 @@ def main(argv: list[str] | None = None) -> int:
                 ),
             ))
         finally:
-            ops_identity.clear_identity_override_if_present(rehearsal_env, "cart_compat_reader", "alice", tok_cleanup)
+            ops_identity.clear_identity_override_if_present(
+                rehearsal_env, "cart_compat_reader", "alice", mint_setup_token("cleanup", "Case A cleanup")
+            )
 
-        ops.apply_operation(rehearsal_env, "cart_compat_reader", "environment_default", "set_on", tok)
+        _apply_rehearsal(ops, rehearsal_env, "cart_compat_reader", "environment_default", "set_on", "Case A fix")
         v_fix = _verify(
-            cfg,
-            rehearsal_url,
-            "verify",
-            rehearsal_state,
-            next_journey_path("case_a_fix"),
+            cfg, rehearsal_env, rehearsal_url, "verify", rehearsal_state, next_journey_path("case_a_fix"),
             {"checkout_v2": False, "cart_compat_reader": True},
         )
         record_or_fail(CaseRow(
@@ -349,16 +402,12 @@ def main(argv: list[str] | None = None) -> int:
         _reset_db(rehearsal_db, "Case B (set_off)", fixture_writes)
         proc = _start_shop(cfg.app.rehearsal_port, rehearsal_db, rehearsal_key)
 
-        prep = _verify(cfg, rehearsal_url, "prepare", rehearsal_state, next_journey_path("case_b_prepare"))
+        prep = _verify(cfg, rehearsal_env, rehearsal_url, "prepare", rehearsal_state, next_journey_path("case_b_prepare"))
         assert prep.ok, f"Case B prepare failed: {prep.summary}"
 
-        tok = issue_token("rehearsal", rehearsal_env)
-        ops.apply_operation(rehearsal_env, "checkout_v2", "environment_default", "set_off", tok)
+        _apply_rehearsal(ops, rehearsal_env, "checkout_v2", "environment_default", "set_off", "Case B rollback")
         v_silent = _verify(
-            cfg,
-            rehearsal_url,
-            "verify",
-            rehearsal_state,
+            cfg, rehearsal_env, rehearsal_url, "verify", rehearsal_state,
             next_journey_path("case_b_rollback"),
             {"checkout_v2": False},
             eval_timeout=10.0,
@@ -381,12 +430,9 @@ def main(argv: list[str] | None = None) -> int:
             ),
         ))
 
-        ops.apply_operation(rehearsal_env, "checkout_v2", "environment_default", "set_off", tok)
+        _apply_rehearsal(ops, rehearsal_env, "checkout_v2", "environment_default", "set_off", "Case B env default retry")
         v_env = _verify(
-            cfg,
-            rehearsal_url,
-            "verify",
-            rehearsal_state,
+            cfg, rehearsal_env, rehearsal_url, "verify", rehearsal_state,
             next_journey_path("case_b_env_default"),
             {"checkout_v2": False},
             eval_timeout=10.0,
@@ -406,15 +452,10 @@ def main(argv: list[str] | None = None) -> int:
             ),
         ))
 
-        tok_id = issue_token("rehearsal-negative-test", rehearsal_env)
-        tok_cleanup = issue_token("cleanup", rehearsal_env)
-        ops_identity.apply_operation(rehearsal_env, "checkout_v2", "identity:alice", "set_off", tok_id)
+        _apply_rehearsal(ops_identity, rehearsal_env, "checkout_v2", "identity:alice", "set_off", "Case B negative identity test")
         try:
             v_idb = _verify(
-                cfg,
-                rehearsal_url,
-                "verify",
-                rehearsal_state,
+                cfg, rehearsal_env, rehearsal_url, "verify", rehearsal_state,
                 next_journey_path("case_b_identity_alice"),
                 {"checkout_v2": False},
                 eval_timeout=10.0,
@@ -434,14 +475,13 @@ def main(argv: list[str] | None = None) -> int:
                 ),
             ))
         finally:
-            ops_identity.clear_identity_override_if_present(rehearsal_env, "checkout_v2", "alice", tok_cleanup)
+            ops_identity.clear_identity_override_if_present(
+                rehearsal_env, "checkout_v2", "alice", mint_setup_token("cleanup", "Case B cleanup")
+            )
 
-        ops.apply_operation(rehearsal_env, "checkout_v2", "segment:vip_users", "set_off", tok)
+        _apply_rehearsal(ops, rehearsal_env, "checkout_v2", "segment:vip_users", "set_off", "Case B fix set_off")
         v_seg_off = _verify(
-            cfg,
-            rehearsal_url,
-            "verify",
-            rehearsal_state,
+            cfg, rehearsal_env, rehearsal_url, "verify", rehearsal_state,
             next_journey_path("case_b_seg_off"),
             {"checkout_v2": False, "cart_compat_reader": True},
         )
@@ -459,15 +499,12 @@ def main(argv: list[str] | None = None) -> int:
 
         seed_case(ops, cfg, rehearsal_env, "b")
         _reset_db(rehearsal_db, "Case B (delete_override)", fixture_writes)
-        prep2 = _verify(cfg, rehearsal_url, "prepare", rehearsal_state, next_journey_path("case_b_del_prepare"))
+        prep2 = _verify(cfg, rehearsal_env, rehearsal_url, "prepare", rehearsal_state, next_journey_path("case_b_del_prepare"))
         assert prep2.ok, f"Case B (del) prepare failed: {prep2.summary}"
-        ops.apply_operation(rehearsal_env, "checkout_v2", "environment_default", "set_off", tok)
-        ops.apply_operation(rehearsal_env, "checkout_v2", "segment:vip_users", "delete_override", tok)
+        _apply_rehearsal(ops, rehearsal_env, "checkout_v2", "environment_default", "set_off", "Case B rollback 2")
+        _apply_rehearsal(ops, rehearsal_env, "checkout_v2", "segment:vip_users", "delete_override", "Case B fix delete_override")
         v_seg_del = _verify(
-            cfg,
-            rehearsal_url,
-            "verify",
-            rehearsal_state,
+            cfg, rehearsal_env, rehearsal_url, "verify", rehearsal_state,
             next_journey_path("case_b_seg_del"),
             {"checkout_v2": False, "cart_compat_reader": True},
         )
@@ -494,16 +531,12 @@ def main(argv: list[str] | None = None) -> int:
         _reset_db(rehearsal_db, "Refusal", fixture_writes)
         proc = _start_shop(cfg.app.rehearsal_port, rehearsal_db, rehearsal_key, app_variant="no_compat")
 
-        prep = _verify(cfg, rehearsal_url, "prepare", rehearsal_state, next_journey_path("refusal_prepare"))
+        prep = _verify(cfg, rehearsal_env, rehearsal_url, "prepare", rehearsal_state, next_journey_path("refusal_prepare"))
         assert prep.ok, f"Refusal prepare failed: {prep.summary}"
 
-        tok = issue_token("rehearsal", rehearsal_env)
-        ops.apply_operation(rehearsal_env, "checkout_v2", "environment_default", "set_off", tok)
+        _apply_rehearsal(ops, rehearsal_env, "checkout_v2", "environment_default", "set_off", "Refusal rollback")
         v_ref0 = _verify(
-            cfg,
-            rehearsal_url,
-            "verify",
-            rehearsal_state,
+            cfg, rehearsal_env, rehearsal_url, "verify", rehearsal_state,
             next_journey_path("refusal_rollback"),
             {"checkout_v2": False},
         )
@@ -520,17 +553,23 @@ def main(argv: list[str] | None = None) -> int:
 
         ref_ops = [
             ("cart_compat_reader", "environment_default", "set_on", {"checkout_v2": False, "cart_compat_reader": True}),
-            ("cart_compat_reader", "segment:vip_users", "set_on", {"checkout_v2": False, "cart_compat_reader": True}),
+            (
+                "cart_compat_reader",
+                "segment:vip_users",
+                "set_on",
+                {
+                    "alice": {"checkout_v2": False, "cart_compat_reader": True},
+                    "carol": {"checkout_v2": False, "cart_compat_reader": True},
+                    "bob": {"checkout_v2": False, "cart_compat_reader": True},
+                },
+            ),
             ("checkout_v2", "segment:vip_users", "set_off", {"checkout_v2": False}),
             ("checkout_v2", "segment:vip_users", "delete_override", {"checkout_v2": False}),
         ]
         for idx, (flag_n, scope_n, op_n, exp_n) in enumerate(ref_ops, start=1):
-            ops.apply_operation(rehearsal_env, flag_n, scope_n, op_n, tok)
+            _apply_rehearsal(ops, rehearsal_env, flag_n, scope_n, op_n, f"Refusal attempt {idx}")
             v_try = _verify(
-                cfg,
-                rehearsal_url,
-                "verify",
-                rehearsal_state,
+                cfg, rehearsal_env, rehearsal_url, "verify", rehearsal_state,
                 next_journey_path(f"refusal_op_{idx}"),
                 exp_n,
                 eval_timeout=15.0,
@@ -557,26 +596,27 @@ def main(argv: list[str] | None = None) -> int:
     assert target_snap_mid.hash == target_snap_before.hash, "demo-target mutated before Target step!"
 
     # ------------------------------------------------------------------
-    # TARGET (Case A repeated on demo-target, port 8002, own DB)
+    # TARGET (Case A repeated on demo-target, port 8002, own DB, Gate 2 bound)
     # ------------------------------------------------------------------
     proc = None
     try:
-        seed_case(ops, cfg, target_env, "a")
-        target_flag_changes.append(f"[{target_env}] seed Case A: checkout_v2=ON, cart_compat_reader=OFF, overrides cleared")
+        _prepare_target_case_a(ops, cfg, target_env, target_flag_changes)
         _reset_db(target_db, "Target", fixture_writes)
         proc = _start_shop(cfg.app.target_port, target_db, target_key)
 
-        prep_t = _verify(cfg, target_url, "prepare", target_state, next_journey_path("target_prepare"))
+        prep_t = _verify(cfg, target_env, target_url, "prepare", target_state, next_journey_path("target_prepare"))
         assert prep_t.ok, f"Target prepare failed: {prep_t.summary}"
 
-        tok_t = issue_token("target", target_env)
-        ops.apply_operation(target_env, "checkout_v2", "environment_default", "set_off", tok_t)
-        target_flag_changes.append(f"[{target_env}] apply: checkout_v2 environment_default set_off")
-        v_trb = _verify(
+        _apply_target(
+            ops,
             cfg,
-            target_url,
-            "verify",
-            target_state,
+            target_env,
+            [("checkout_v2", "environment_default", "set_off")],
+            target_flag_changes,
+            "Case A rollback on target",
+        )
+        v_trb = _verify(
+            cfg, target_env, target_url, "verify", target_state,
             next_journey_path("target_rollback"),
             {"checkout_v2": False},
         )
@@ -596,13 +636,16 @@ def main(argv: list[str] | None = None) -> int:
             ),
         ))
 
-        ops.apply_operation(target_env, "cart_compat_reader", "environment_default", "set_on", tok_t)
-        target_flag_changes.append(f"[{target_env}] apply: cart_compat_reader environment_default set_on")
-        v_tfix = _verify(
+        _apply_target(
+            ops,
             cfg,
-            target_url,
-            "verify",
-            target_state,
+            target_env,
+            [("cart_compat_reader", "environment_default", "set_on")],
+            target_flag_changes,
+            "verified Case A fix on target",
+        )
+        v_tfix = _verify(
+            cfg, target_env, target_url, "verify", target_state,
             next_journey_path("target_fix"),
             {"checkout_v2": False, "cart_compat_reader": True},
         )

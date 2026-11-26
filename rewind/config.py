@@ -161,6 +161,7 @@ class RewindConfig(BaseModel):
     allowed: AllowedConfig
     agent: AgentConfig | None = None
     config_dir: Path | None = Field(default=None, exclude=True)
+    config_path: Path | None = Field(default=None, exclude=True)
 
     @model_validator(mode="after")
     def check_semantics(self) -> "RewindConfig":
@@ -209,4 +210,5 @@ def load_config(path: str | Path) -> RewindConfig:
     except Exception as exc:
         raise ConfigError(f"Invalid config in {cfg_path}: {exc}") from exc
     cfg.config_dir = cfg_path.parent
+    cfg.config_path = cfg_path
     return cfg

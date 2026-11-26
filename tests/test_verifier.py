@@ -1,4 +1,4 @@
-"""Unit tests for rewind.verifier with passing, failing, convergence, and hardening fixtures."""
+"""Unit tests for rewind.verifier with passing, failing, per-user convergence, and wiring fixtures."""
 
 from __future__ import annotations
 
@@ -289,6 +289,77 @@ def test_poll_eval_convergence_rejects_missing_or_non_bool_flag_for_off() -> Non
         post_fn=non_bool_post,
     )
     assert conv_non_bool.converged is False
+
+
+def test_poll_eval_convergence_per_user_expectations() -> None:
+    cfg = _load_demo_config()
+    per_user = {
+        "alice": {"checkout_v2": False, "cart_compat_reader": True},
+        "carol": {"checkout_v2": False, "cart_compat_reader": True},
+        "bob": {"checkout_v2": False, "cart_compat_reader": False},
+    }
+
+    def seg_compat_post(url: str, body: dict):
+        uid = body["user_id"]
+        compat = uid in {"alice", "carol"}
+        return 200, {
+            "ok": True,
+            "user_id": uid,
+            "effective_flags": {"checkout_v2": False, "cart_compat_reader": compat},
+        }
+
+    conv = poll_eval_convergence(
+        base_url="http://127.0.0.1:8001",
+        users=cfg.users,
+        expected_flags=per_user,
+        timeout_s=2.0,
+        interval_s=0.0,
+        post_fn=seg_compat_post,
+    )
+    assert conv.converged is True
+    assert conv.streak == 3
+    assert conv.attempts == 3
+
+
+def test_verify_journey_passes_config_and_isolated_state_files_per_env() -> None:
+    cfg = _load_demo_config()
+    seen_cmds: list[list[str]] = []
+    passing_payload = {
+        "ok": True,
+        "phase": "verify",
+        "steps": [
+            {
+                "name": "checkout",
+                "user": uid,
+                "http_status": 200,
+                "executed_version": "legacy",
+                "effective_flags": {"checkout_v2": False, "cart_compat_reader": True},
+                "assertions": [{"name": "ok", "pass": True, "detail": "ok"}],
+            }
+            for uid in ("alice", "carol", "bob")
+        ],
+    }
+
+    def capture_runner(cmd: list[str], env: dict[str, str], timeout: float) -> subprocess.CompletedProcess[str]:
+        seen_cmds.append(cmd)
+        return _completed(0, json.dumps(passing_payload))
+
+    verify_journey(cfg, base_url="http://127.0.0.1:8001", phase="verify", runner=capture_runner)
+    verify_journey(cfg, base_url="http://127.0.0.1:8002", phase="verify", runner=capture_runner)
+
+    assert len(seen_cmds) == 2
+    cmd_rehearsal, cmd_target = seen_cmds
+    assert "--config" in cmd_rehearsal and "--config" in cmd_target
+    cfg_rehearsal = cmd_rehearsal[cmd_rehearsal.index("--config") + 1]
+    cfg_target = cmd_target[cmd_target.index("--config") + 1]
+    assert Path(cfg_rehearsal) == cfg.config_path
+    assert Path(cfg_target) == cfg.config_path
+
+    state_rehearsal = cmd_rehearsal[cmd_rehearsal.index("--state-file") + 1]
+    state_target = cmd_target[cmd_target.index("--state-file") + 1]
+    assert state_rehearsal != state_target
+    assert "rehearsal" in Path(state_rehearsal).name
+    assert "demo-target" in Path(state_target).name
 
 
 def test_parse_journey_output_rejects_malformed() -> None:

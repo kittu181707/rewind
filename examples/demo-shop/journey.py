@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -79,14 +78,31 @@ def _get(base_url: str, path: str) -> tuple[int, dict[str, Any]]:
     return resp.status_code, data
 
 
+def _resolve_user_expectations(
+    expected_flags: dict[str, Any] | None,
+    users: list[dict[str, Any]],
+) -> dict[str, dict[str, bool]] | None:
+    if expected_flags is None:
+        return None
+    user_ids = [str(u["id"]) for u in users]
+    values = list(expected_flags.values())
+    if values and all(isinstance(v, dict) for v in values):
+        return {
+            uid: {str(k): bool(v) for k, v in dict(expected_flags.get(uid, {})).items()}
+            for uid in user_ids
+        }
+    return {uid: {str(k): bool(v) for k, v in expected_flags.items()} for uid in user_ids}
+
+
 def poll_eval_three_consecutive(
     base_url: str,
     users: list[dict[str, Any]],
-    expected_flags: dict[str, bool] | None,
+    expected_flags: dict[str, Any] | None,
     timeout_s: float = 30.0,
     interval_s: float = 0.5,
 ) -> tuple[bool, dict[str, dict[str, Any]], int, str]:
     """Require 3 consecutive matching /eval reads across all users before asserting."""
+    per_user_expected = _resolve_user_expectations(expected_flags, users)
     deadline = time.monotonic() + timeout_s
     consecutive = 0
     baseline_snapshot: dict[str, dict[str, bool]] | None = None
@@ -109,15 +125,15 @@ def poll_eval_three_consecutive(
             if any(not isinstance(value, bool) for value in flags.values()):
                 all_ok = False
                 continue
-            if expected_flags is not None:
-                for k, want in expected_flags.items():
+            if per_user_expected is not None:
+                for k, want in per_user_expected[uid].items():
                     if k not in flags or not isinstance(flags[k], bool) or flags[k] is not bool(want):
                         all_ok = False
             current_flags_only[uid] = flags
 
         last_eval = current_eval
         if all_ok:
-            if expected_flags is not None:
+            if per_user_expected is not None:
                 consecutive += 1
             else:
                 if baseline_snapshot is None or current_flags_only != baseline_snapshot:
@@ -170,7 +186,7 @@ def run_prepare(
                 "assertions": [
                     {
                         "name": "eval_converged_3x",
-                        "pass": converged and bool(eval_flags.get(rollback_flag)) is True,
+                        "pass": converged and eval_flags.get(rollback_flag) is True,
                         "detail": detail,
                     }
                 ],
@@ -196,7 +212,7 @@ def run_prepare(
                     },
                     {
                         "name": "prepare_executed_v2",
-                        "pass": exec_ver == "v2" and bool(eff.get(rollback_flag)) is True,
+                        "pass": exec_ver == "v2" and eff.get(rollback_flag) is True,
                         "detail": f"executed_version={exec_ver}, effective_flags={eff}",
                     },
                 ]
@@ -266,7 +282,7 @@ def run_verify(
     rollback_flag: str,
     rollback_to: str,
     state_file: Path,
-    expected_flags: dict[str, bool] | None,
+    expected_flags: dict[str, Any] | None,
     eval_timeout: float,
 ) -> dict[str, Any]:
     if not state_file.exists():
@@ -294,12 +310,13 @@ def run_verify(
     saved = json.loads(state_file.read_text(encoding="utf-8")).get("users", {})
     goal_bool = rollback_to == "on"
     goal_version = "v2" if goal_bool else "legacy"
-    poll_expect = expected_flags if expected_flags is not None else {rollback_flag: goal_bool}
+    raw_expect = expected_flags if expected_flags is not None else {rollback_flag: goal_bool}
+    per_user_expect = _resolve_user_expectations(raw_expect, users) or {}
 
     converged, eval_map, streak, detail = poll_eval_three_consecutive(
         base_url,
         users,
-        expected_flags=poll_expect,
+        expected_flags=per_user_expect,
         timeout_s=eval_timeout,
     )
 
@@ -312,10 +329,15 @@ def run_verify(
         eval_entry = eval_map.get(uid, {})
         eval_flags = eval_entry.get("effective_flags", {})
         eval_ver = str(eval_entry.get("executed_version", "unknown"))
+        user_want = per_user_expect.get(uid, {})
         eval_ok = (
             converged
             and int(eval_entry.get("http_status", 500)) == 200
-            and all(bool(eval_flags.get(k)) == v for k, v in poll_expect.items())
+            and isinstance(eval_flags, dict)
+            and all(
+                k in eval_flags and isinstance(eval_flags[k], bool) and eval_flags[k] is v
+                for k, v in user_want.items()
+            )
         )
         steps.append(
             {
@@ -356,7 +378,8 @@ def run_verify(
                 "pass": (
                     isinstance(eff, dict)
                     and rollback_flag in eff
-                    and bool(eff.get(rollback_flag)) == (exec_ver == "v2")
+                    and isinstance(eff[rollback_flag], bool)
+                    and eff[rollback_flag] is (exec_ver == "v2")
                 ),
                 "detail": f"effective_flags={eff}, executed_version={exec_ver}",
             },
@@ -385,15 +408,17 @@ def run_verify(
             },
         ]
 
-        # Enforce flag/execution consistency strictly using response effective_flags
         for item in assertions:
             if item["name"] == "effective_flags_match_execution":
-                flag_matches = isinstance(eff, dict) and rollback_flag in eff and (
-                    bool(eff.get(rollback_flag)) == (exec_ver == "v2")
+                flag_matches = (
+                    isinstance(eff, dict)
+                    and rollback_flag in eff
+                    and isinstance(eff[rollback_flag], bool)
+                    and (eff[rollback_flag] is (exec_ver == "v2"))
                 )
                 compat_ok = True
                 if status == 200 and exec_ver == "legacy" and body.get("schema_version") == "v2":
-                    compat_ok = bool(eff.get("cart_compat_reader", False)) is True
+                    compat_ok = eff.get("cart_compat_reader") is True
                 item["pass"] = bool(flag_matches and compat_ok)
 
         if role == "control":
@@ -441,7 +466,7 @@ def main(argv: list[str] | None = None) -> int:
     state_file = Path(args.state_file)
     expected_flags = None
     if args.expect_json:
-        expected_flags = {str(k): bool(v) for k, v in json.loads(args.expect_json).items()}
+        expected_flags = json.loads(args.expect_json)
 
     if args.phase == "prepare":
         result = run_prepare(args.base_url, users, rollback_flag, state_file, args.eval_timeout)

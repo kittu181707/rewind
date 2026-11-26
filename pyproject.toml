@@ -26,7 +26,7 @@ dev = ["pytest>=8.3.0"]
 rewind = "rewind.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["rewind*"]
+include = ["rewind*", "scripts"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 import shlex
 import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
+from urllib.parse import urlparse
 
 import requests
 
@@ -78,7 +80,7 @@ def _default_post(url: str, payload: dict[str, Any]) -> tuple[int, dict[str, Any
     return resp.status_code, body
 
 
-def _has_exact_bool_flags(eff: Any, expected_flags: dict[str, bool]) -> bool:
+def _has_exact_bool_flags(eff: Any, expected_flags: Mapping[str, bool]) -> bool:
     if not isinstance(eff, dict):
         return False
     for flag_name, want in expected_flags.items():
@@ -90,10 +92,50 @@ def _has_exact_bool_flags(eff: Any, expected_flags: dict[str, bool]) -> bool:
     return True
 
 
+def _normalize_expected_flags(
+    expected_flags: Mapping[str, Any],
+    users: list[Any],
+) -> dict[str, dict[str, bool]]:
+    """Normalize flat {flag: bool} or per-user {uid: {flag: bool}} expectations."""
+    user_ids = [u.id if hasattr(user_id_obj := u, "id") else str(user_id_obj["id"]) for u in users]
+    if not expected_flags:
+        return {uid: {} for uid in user_ids}
+
+    values = list(expected_flags.values())
+    all_bools = all(isinstance(v, bool) for v in values)
+    all_dicts = all(isinstance(v, dict) for v in values)
+
+    if all_bools:
+        flat = {str(k): v for k, v in expected_flags.items()}
+        return {uid: dict(flat) for uid in user_ids}
+
+    if all_dicts:
+        known_users = set(user_ids)
+        unknown = sorted(set(str(k) for k in expected_flags.keys()) - known_users)
+        if unknown:
+            raise VerifierError(f"Per-user expected_flags references unknown user(s): {unknown}")
+        per_user: dict[str, dict[str, bool]] = {}
+        for uid in user_ids:
+            raw_map = expected_flags.get(uid, {})
+            clean_map: dict[str, bool] = {}
+            for flag_name, val in raw_map.items():
+                if not isinstance(val, bool):
+                    raise VerifierError(
+                        f"Expected boolean flag value for {uid}.{flag_name}, got {val!r}"
+                    )
+                clean_map[str(flag_name)] = val
+            per_user[uid] = clean_map
+        return per_user
+
+    raise VerifierError(
+        "expected_flags must map either flag names to booleans or user IDs to {flag: bool} dicts"
+    )
+
+
 def poll_eval_convergence(
     base_url: str,
     users: list[Any],
-    expected_flags: dict[str, bool],
+    expected_flags: Mapping[str, Any],
     timeout_s: float = 30.0,
     interval_s: float = 0.5,
     required_streak: int = 3,
@@ -103,6 +145,7 @@ def poll_eval_convergence(
     if not users:
         raise VerifierError("No users configured for /eval convergence polling")
 
+    per_user_expected = _normalize_expected_flags(expected_flags, users)
     poster = post_fn or _default_post
     eval_url = f"{base_url.rstrip('/')}/eval"
     deadline = time.monotonic() + timeout_s
@@ -127,7 +170,7 @@ def poll_eval_convergence(
 
             round_results[uid] = {"http_status": status, **(body if isinstance(body, dict) else {})}
             eff = body.get("effective_flags") if isinstance(body, dict) else None
-            if status != 200 or not _has_exact_bool_flags(eff, expected_flags):
+            if status != 200 or not _has_exact_bool_flags(eff, per_user_expected[uid]):
                 round_match = False
 
         last_eval = round_results
@@ -176,10 +219,37 @@ def parse_journey_output(stdout: str) -> dict[str, Any]:
     return parsed
 
 
+def resolve_environment_for_journey(
+    config: RewindConfig,
+    base_url: str,
+    environment: str | None = None,
+) -> str:
+    """Validate explicit environment or infer rehearsal vs target from base_url port."""
+    if environment is not None:
+        if environment not in config.allowed_environments():
+            raise VerifierError(f"Environment {environment!r} is not in allowlist")
+        return environment
+    parsed_port = urlparse(base_url).port
+    if parsed_port == config.app.target_port:
+        return config.flagsmith.target.environment
+    return config.flagsmith.rehearsal.environment
+
+
+def default_state_file_for_env(config: RewindConfig, environment: str) -> Path:
+    """Return an isolated journey state file path scoped to project and environment."""
+    safe_env = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in environment)
+    base_dir = config.config_dir or Path.cwd()
+    return base_dir / ".rewind_state" / f"{safe_env}.journey_state.json"
+
+
 def _build_journey_command(
     config: RewindConfig,
     base_url: str,
     phase: str,
+    *,
+    environment: str | None = None,
+    config_path: str | Path | None = None,
+    state_file: str | Path | None = None,
     extra_args: list[str] | None = None,
 ) -> list[str]:
     rendered = config.app.journey.format(base_url=base_url, phase=phase)
@@ -188,8 +258,21 @@ def _build_journey_command(
         raise VerifierError("Rendered app.journey command is empty")
     if parts[0] in {"python", "python3"}:
         parts[0] = sys.executable
-    if extra_args:
-        parts.extend(extra_args)
+
+    extras = list(extra_args) if extra_args else []
+    combined = parts + extras
+
+    resolved_cfg = Path(config_path) if config_path is not None else config.config_path
+    if resolved_cfg is not None and "--config" not in combined:
+        parts.extend(["--config", str(resolved_cfg)])
+
+    env_name = resolve_environment_for_journey(config, base_url, environment)
+    resolved_state = Path(state_file) if state_file is not None else default_state_file_for_env(config, env_name)
+    if "--state-file" not in combined:
+        parts.extend(["--state-file", str(resolved_state)])
+
+    if extras:
+        parts.extend(extras)
     return parts
 
 
@@ -197,7 +280,11 @@ def verify_journey(
     config: RewindConfig,
     base_url: str,
     phase: str = "verify",
-    expected_flags: dict[str, bool] | None = None,
+    expected_flags: Mapping[str, Any] | None = None,
+    *,
+    environment: str | None = None,
+    config_path: str | Path | None = None,
+    state_file: str | Path | None = None,
     extra_args: list[str] | None = None,
     timeout_s: float = 90.0,
     eval_timeout_s: float = 30.0,
@@ -218,7 +305,15 @@ def verify_journey(
             post_fn=post_fn,
         )
 
-    cmd = _build_journey_command(config, base_url=base_url, phase=phase, extra_args=extra_args)
+    cmd = _build_journey_command(
+        config,
+        base_url=base_url,
+        phase=phase,
+        environment=environment,
+        config_path=config_path,
+        state_file=state_file,
+        extra_args=extra_args,
+    )
     env = dict(os.environ)
     run = runner or _default_runner
     try:
@@ -278,7 +373,6 @@ def verify_journey(
         if step_name == "checkout":
             checkout_users.add(uid)
 
-        # Direct structural checks on verify action/eval steps regardless of journey self-assertions
         if phase == "verify":
             if http_status != 200:
                 failed_assertions.append(

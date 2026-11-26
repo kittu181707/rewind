@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rewind"
+version = "0.1.0"
+description = "AI agent that rehearses feature-flag rollbacks before you run them for real."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
+    "pyyaml>=6.0.2",
+    "rich>=13.9.0",
+    "requests>=2.32.0",
+    "python-dotenv>=1.0.1",
+    "flagsmith>=6.0.0",
+    "pydantic>=2.9.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3.0"]
+
+[project.scripts]
+rewind = "rewind.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["rewind*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "live: slow integration tests hitting Flagsmith Cloud",
+]

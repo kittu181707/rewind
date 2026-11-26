@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import json
 from pathlib import Path
+import re
 from typing import Any, Callable, Literal
 
 from rewind.agent.llm import ChatModel
@@ -158,6 +159,33 @@ def _tool_call(raw: Any) -> tuple[str, str, dict[str, Any]]:
     return tool_id, name, args
 
 
+def _no_fix_reason(content: Any) -> str | None:
+    if not isinstance(content, str):
+        return None
+    text = content.strip()
+    fence = re.fullmatch(r"```(?:json)?[ \t]*\r?\n(.*?)\r?\n```", text, flags=re.IGNORECASE | re.DOTALL)
+    if fence is not None:
+        text = fence.group(1)
+
+    def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result = dict(pairs)
+        if len(result) != len(pairs):
+            raise ValueError("Duplicate JSON keys")
+        return result
+
+    try:
+        answer = json.loads(text, object_pairs_hook=unique_object)
+    except (ValueError, RecursionError):
+        return None
+    if not isinstance(answer, dict) or set(answer) != {"no_fix"}:
+        return None
+    reason = answer["no_fix"]
+    if not isinstance(reason, str):
+        return None
+    reason = reason.strip()
+    return reason if 0 < len(reason) <= 1000 else None
+
+
 def run_attempt(model: ChatModel, tools: AttemptTools, previous: list[dict[str, Any]]) -> AttemptResult:
     messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": json.dumps({
         "task": "Diagnose this rollback using the available read tools, then make one terminal decision.",
@@ -174,14 +202,9 @@ def run_attempt(model: ChatModel, tools: AttemptTools, previous: list[dict[str, 
         audit.append(tools.scrub(assistant))
         try:
             if not calls:
-                try:
-                    answer = json.loads(content) if isinstance(content, str) else None
-                except ValueError:
-                    answer = None
-                if isinstance(answer, dict) and set(answer) == {"no_fix"}:
-                    reason = answer["no_fix"]
-                    if isinstance(reason, str) and 0 < len(reason.strip()) <= 1000:
-                        return AttemptResult("no_fix", tools.scrub(reason.strip()), messages=audit)
+                reason = _no_fix_reason(content)
+                if reason is not None:
+                    return AttemptResult("no_fix", tools.scrub(reason), messages=audit)
                 raise ToolError("Expected one proposal or a no_fix answer with a reason")
             if not isinstance(calls, list) or len(calls) > MAX_READ_CALLS:
                 raise ToolError("Too many or malformed tool calls")

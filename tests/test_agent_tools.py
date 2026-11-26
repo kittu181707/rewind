@@ -82,8 +82,22 @@ def test_proposal_requires_diagnosis_and_applies_allowlist(tool_set):
         tool_set.propose({**fields, "diagnosis": "A masked failure."})
 
 
-def test_no_fix_is_terminal_only_with_reason(tool_set):
-    model = ScriptedModel({"content": '{"no_fix":"The legacy code has no compatibility path."}'})
+@pytest.mark.parametrize("template", ["{}", " \n {} \t ", "\n```json\n{}\n```\n ", "```\r\n{}\r\n```"])
+def test_no_fix_accepts_json_with_whitespace_or_one_fence(tool_set, template):
+    content = template.format(json.dumps({"no_fix": "The legacy code has no compatibility path."}))
+    model = ScriptedModel({"content": content})
     result = run_attempt(model, tool_set, [])
     assert result.status == "no_fix" and result.proposal is None
     assert result.reason == "The legacy code has no compatibility path."
+
+
+@pytest.mark.parametrize("text", [
+    '```json\n{"no_fix":"a reason","extra":true}\n```',
+    '{"no_fix":"a reason","no_fix":"another reason"}',
+    '{"no_fix":"   "}', '{"no_fix":false}',
+    json.dumps({"no_fix": "a" * 1001}),
+    'Some prose\n```json\n{"no_fix":"a reason"}\n```',
+])
+def test_no_fix_still_requires_exact_shape_and_reason_bound(tool_set, text):
+    result = run_attempt(ScriptedModel({"content": text}), tool_set, [])
+    assert result.status == "invalid" and result.proposal is None

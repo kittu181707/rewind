@@ -2,10 +2,14 @@
 
 import json
 from pathlib import Path
+import subprocess
+
+import pytest
 
 from rewind.config import load_config
 from scripts.summarize_run import main, summarize
 from scripts.target_hash import read_target
+from scripts import validate_day2
 
 
 CONFIG = Path(__file__).resolve().parents[1] / "examples/demo-shop/rewind.config.yaml"
@@ -67,3 +71,49 @@ def test_run_summary_keeps_complete_diagnoses_and_changes(tmp_path, capsys):
     assert "Target: verify after recovery: 5.0" in text and "prompt/completion tokens: 50/4" in text
     assert '"status": "applied"' in text and '"status": "recorded"' in text
     assert summarize(run)["llm_seconds"] == 3.2
+
+
+def test_validation_write_trace_guards_scope_without_retaining_keys(monkeypatch):
+    cfg = load_config(CONFIG)
+    rehearsal_key, target_key = "trace-rehearsal-key", "trace-target-key"
+    monkeypatch.setenv(cfg.flagsmith.rehearsal.key_env, rehearsal_key)
+    monkeypatch.setenv(cfg.flagsmith.target.key_env, target_key)
+    calls = []
+
+    def runner(argv, _env):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0)
+
+    trace = validate_day2.WriteTrace(cfg, {cfg.flagsmith.rehearsal.environment}, runner=runner)
+    argv = ["flagsmith", "flag", "update", "checkout_v2", "--disable", "--environment", rehearsal_key, "--yes"]
+    trace(argv, {})
+    with pytest.raises(validate_day2.ValidationError, match="out-of-scope Flagsmith environment"):
+        trace([*argv[:-2], target_key, "--yes"], {})
+    with pytest.raises(validate_day2.ValidationError, match="out-of-scope override"):
+        trace([*argv[:5], "--identifier", "alice", *argv[5:]], {})
+    assert calls == [argv] and len(trace.writes) == 1
+    assert trace.writes[0]["environment"] == "rehearsal" and trace.writes[0]["status"] == "applied"
+    assert "<REDACTED>" in trace.writes[0]["command"] and rehearsal_key not in json.dumps(trace.writes)
+
+
+def test_retry_never_follows_a_target_write_or_agent_refusal():
+    flaky = {"status": "stopped", "llm_calls": [{"outcome": "rate_limited"}]}
+    assert validate_day2.is_flaky({"writes": []}, flaky)
+    assert not validate_day2.is_flaky({"writes": [{"environment": "demo-target"}]}, flaky)
+    assert not validate_day2.is_flaky({"writes": []}, {**flaky, "status": "refused"})
+    assert not validate_day2.is_flaky({"writes": []}, {"status": "stopped", "llm_calls": [{"outcome": "error"}]})
+
+
+def test_secret_audit_counts_occurrences_without_values_or_urls(tmp_path, monkeypatch):
+    marker = "fake-value-only-for-counting"
+    url = "https://" + "provider.invalid/oauth/authorize?test=1"
+    artifact = tmp_path / ".artifacts" / "run.json"
+    artifact.parent.mkdir()
+    artifact.write_text(f"{marker} {marker} {url}")
+    monkeypatch.setattr(validate_day2, "_historical_contents", lambda root: iter([marker.encode(), b"clean"]))
+    audit = validate_day2.secrets_audit(tmp_path, {"SYNTHETIC_KEY": marker, "EMPTY": ""})
+    assert audit == {
+        "status": "FAIL", "captured_outputs": {"scanned": 1, "value_matches": {"SYNTHETIC_KEY": 2}, "auth_url_matches": 1},
+        "git_history": {"scanned": 2, "value_matches": {"SYNTHETIC_KEY": 1}, "auth_url_matches": 0},
+    }
+    assert marker not in json.dumps(audit) and url not in json.dumps(audit)

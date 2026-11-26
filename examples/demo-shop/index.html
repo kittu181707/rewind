@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rewind Demo Shop</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --err: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 24px;
+    }
+    .container { max-width: 920px; margin: 0 auto; display: grid; gap: 16px; }
+    header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 16px 20px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    }
+    h1 { margin: 0; font-size: 1.25rem; }
+    .sub { color: var(--muted); font-size: 0.85rem; margin-top: 2px; }
+    .badge {
+      display: inline-block; padding: 6px 12px; border-radius: 999px;
+      font-weight: 700; font-size: 0.85rem; letter-spacing: 0.03em;
+    }
+    .badge-v2 { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid #f59e0b; }
+    .badge-legacy { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid #22c55e; }
+    .badge-none { background: rgba(148, 163, 184, 0.15); color: var(--muted); border: 1px solid var(--border); }
+    .grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px;
+    }
+    .card h2 { margin: 0 0 12px 0; font-size: 1rem; color: var(--accent); }
+    .users { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    button {
+      cursor: pointer; border-radius: 8px; border: 1px solid var(--border);
+      background: #0f172a; color: var(--text); padding: 8px 14px; font-weight: 600;
+    }
+    button:hover { border-color: var(--accent); }
+    button.active { background: var(--accent); color: #0f172a; border-color: var(--accent); }
+    button.primary { background: #2563eb; border-color: #3b82f6; color: #fff; }
+    button.primary:hover { background: #1d4ed8; }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 0.92rem; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; }
+    .totals { display: flex; justify-content: space-between; font-weight: 700; padding-top: 8px; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+    .error-banner {
+      display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid var(--err);
+      color: #fecaca; padding: 14px 16px; border-radius: 10px; font-weight: 600;
+    }
+    .ok-banner {
+      display: none; background: rgba(34, 197, 94, 0.15); border: 1px solid var(--ok);
+      color: #bbf7d0; padding: 14px 16px; border-radius: 10px; font-weight: 600;
+    }
+    .flag-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88rem;
+    }
+    .pill-on { color: #4ade80; font-weight: 700; }
+    .pill-off { color: #f87171; font-weight: 700; }
+    .meta { color: var(--muted); font-size: 0.84rem; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>Rewind Demo Shop</h1>
+        <div class="sub">Static UI calling FastAPI + SQLite + Flagsmith endpoints</div>
+      </div>
+      <div>
+        <span class="sub" style="margin-right:8px;">Executed path:</span>
+        <span id="version-badge" class="badge badge-none">none</span>
+      </div>
+    </header>
+
+    <div id="error-banner" class="error-banner" role="alert"></div>
+    <div id="ok-banner" class="ok-banner"></div>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Customer &amp; Cart</h2>
+        <div class="users" id="user-switcher">
+          <button type="button" data-user="alice" class="active">alice (VIP)</button>
+          <button type="button" data-user="carol">carol (VIP)</button>
+          <button type="button" data-user="bob">bob (control)</button>
+        </div>
+
+        <div id="customer-meta" class="meta">Loading cart...</div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>SKU</th>
+              <th>Item</th>
+              <th>Qty</th>
+              <th>Price</th>
+            </tr>
+          </thead>
+          <tbody id="cart-rows"></tbody>
+        </table>
+
+        <div class="totals">
+          <span id="total-items">Items: 0</span>
+          <span id="total-price">Total: $0.00</span>
+        </div>
+
+        <div class="actions">
+          <button type="button" id="btn-add">+ Add Coffee ($5.00)</button>
+          <button type="button" id="btn-checkout" class="primary">Checkout</button>
+          <button type="button" id="btn-eval">Refresh Flags</button>
+          <button type="button" id="btn-reset">Reset DB</button>
+        </div>
+      </section>
+
+      <aside class="card">
+        <h2>Live Effective Flags</h2>
+        <div class="meta">Updated from the latest HTTP response</div>
+        <div id="flags-panel"></div>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    const state = { user: "alice" };
+
+    function fmtCents(cents) {
+      return "$" + (Number(cents || 0) / 100).toFixed(2);
+    }
+
+    function clearBanners() {
+      const err = document.getElementById("error-banner");
+      const ok = document.getElementById("ok-banner");
+      err.style.display = "none";
+      ok.style.display = "none";
+    }
+
+    function showError(status, detail) {
+      const err = document.getElementById("error-banner");
+      err.textContent = "HTTP " + status + " Error: " + detail;
+      err.style.display = "block";
+    }
+
+    function showSuccess(msg) {
+      const ok = document.getElementById("ok-banner");
+      ok.textContent = msg;
+      ok.style.display = "block";
+    }
+
+    function renderVersionBadge(ver) {
+      const badge = document.getElementById("version-badge");
+      badge.textContent = ver || "none";
+      badge.className = "badge " + (
+        ver === "v2" ? "badge-v2" : ver === "legacy" ? "badge-legacy" : "badge-none"
+      );
+    }
+
+    function renderFlags(flags) {
+      const panel = document.getElementById("flags-panel");
+      panel.innerHTML = "";
+      const keys = Object.keys(flags || {});
+      if (!keys.length) {
+        panel.innerHTML = '<div class="meta">No flags evaluated yet.</div>';
+        return;
+      }
+      keys.sort().forEach((k) => {
+        const val = Boolean(flags[k]);
+        const row = document.createElement("div");
+        row.className = "flag-row";
+        row.innerHTML = `<span>${k}</span><span class="${val ? "pill-on" : "pill-off"}">${val}</span>`;
+        panel.appendChild(row);
+      });
+    }
+
+    function renderCart(data) {
+      document.getElementById("customer-meta").textContent =
+        `user=${data.user_id} | cart=${data.cart_id} | schema=${data.schema_version} | is_vip=${Boolean(data.traits && data.traits.is_vip)}`;
+      const tbody = document.getElementById("cart-rows");
+      tbody.innerHTML = "";
+      (data.items || []).forEach((item) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${item.sku}</td><td>${item.name}</td><td>${item.qty}</td><td>${fmtCents(item.price_cents)}</td>`;
+        tbody.appendChild(tr);
+      });
+      document.getElementById("total-items").textContent = "Items: " + (data.total_items || 0);
+      document.getElementById("total-price").textContent = "Total: " + fmtCents(data.total_cents || 0);
+    }
+
+    async function loadUserState() {
+      clearBanners();
+      const cartResp = await fetch(`/cart/${encodeURIComponent(state.user)}`);
+      const cartData = await cartResp.json();
+      if (cartResp.ok) {
+        renderCart(cartData);
+      } else {
+        showError(cartResp.status, cartData.detail || "Failed to load cart");
+      }
+
+      const evalResp = await fetch("/eval", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: state.user })
+      });
+      const evalData = await evalResp.json();
+      renderVersionBadge(evalData.executed_version);
+      renderFlags(evalData.effective_flags);
+      if (!evalResp.ok) {
+        showError(evalResp.status, evalData.detail || "Eval failed");
+      }
+    }
+
+    async function postAction(path, body, successLabel) {
+      clearBanners();
+      const resp = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await resp.json();
+      if (data.executed_version) renderVersionBadge(data.executed_version);
+      if (data.effective_flags) renderFlags(data.effective_flags);
+      if (!resp.ok) {
+        showError(resp.status, data.detail || data.error || "Request failed");
+        return;
+      }
+      if (data.items) renderCart(data);
+      showSuccess(`${successLabel} (${data.executed_version}) for ${state.user}`);
+    }
+
+    document.querySelectorAll("#user-switcher button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.user = btn.getAttribute("data-user");
+        document.querySelectorAll("#user-switcher button").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        loadUserState();
+      });
+    });
+
+    document.getElementById("btn-add").addEventListener("click", () => {
+      postAction("/cart/add", {
+        user_id: state.user,
+        sku: "coffee",
+        name: "House Coffee",
+        quantity: 1,
+        price_cents: 500
+      }, "Added item");
+    });
+
+    document.getElementById("btn-checkout").addEventListener("click", () => {
+      postAction("/checkout", { user_id: state.user }, "Checkout HTTP 200");
+    });
+
+    document.getElementById("btn-eval").addEventListener("click", loadUserState);
+
+    document.getElementById("btn-reset").addEventListener("click", async () => {
+      clearBanners();
+      const resp = await fetch("/reset", { method: "POST" });
+      if (resp.ok) {
+        await loadUserState();
+        showSuccess("Database reset to clean v1 baseline");
+      } else {
+        showError(resp.status, "Reset failed");
+      }
+    });
+
+    loadUserState();
+  </script>
+</body>
+</html>

@@ -26,15 +26,24 @@ MAX_RETRY_DELAY_S = 60.0
 _DURATION = re.compile(r"(?:\d+(?:\.\d+)?(?:ms|s|m|h|d))+")
 _DURATION_PART = re.compile(r"(\d+(?:\.\d+)?)(ms|s|m|h|d)")
 _DURATION_UNITS = {"ms": 0.001, "s": 1.0, "m": 60.0, "h": 3600.0, "d": 86400.0}
+_REFLECTED_REQUEST = re.compile(r"(?:\b(?:request )?(?:body|headers?|payload)\s*[:=]|\{\s*[\"'])", re.IGNORECASE)
+_CREDENTIAL_TEXT = re.compile(
+    r"https?://[^\s\"'<>]+|\b(?:Bearer|Basic)\s+[^\s,;]+|"
+    r"\b(?:sk-|gsk_|AIza|ghp_|github_pat_|ser\.|AQ\.)[A-Za-z0-9_.-]{8,}", re.IGNORECASE,
+)
 
 
 class LLMError(RuntimeError):
-    """Provider errors contain no response bodies, credentials, or headers."""
+    """A provider error with an optional sanitized diagnostic excerpt."""
+
+    def __init__(self, message: str, *, provider_message: str | None = None) -> None:
+        super().__init__(f"{message}: {provider_message}" if provider_message else message)
+        self.provider_message = provider_message
 
 
 class _TransientLLMError(LLMError):
-    def __init__(self, message: str, *, retry_delay: float = 0.0) -> None:
-        super().__init__(message)
+    def __init__(self, message: str, *, retry_delay: float = 0.0, provider_message: str | None = None) -> None:
+        super().__init__(message, provider_message=provider_message)
         self.retry_delay = retry_delay
 
 
@@ -77,6 +86,24 @@ def _rate_limit_delay(headers) -> float:
     return max(delays, default=1.0)
 
 
+def _provider_diagnostic(response: requests.Response, key: str) -> str | None:
+    try:
+        message = response.json().get("error", {}).get("message")
+    except (AttributeError, ValueError):
+        return None
+    if not isinstance(message, str):
+        return None
+    secrets = {key, *(value for name, value in os.environ.items() if len(value) >= 8
+                      and any(term in name.upper() for term in ("KEY", "TOKEN", "SECRET", "PASSWORD")))}
+    for secret in sorted(secrets, key=len, reverse=True):
+        message = message.replace(secret, "<REDACTED>")
+    message = _CREDENTIAL_TEXT.sub("<REDACTED>", message.replace("\\/", "/"))
+    message = _REFLECTED_REQUEST.split(message, maxsplit=1)[0]
+    # Drop control characters and formatting before limiting the retained message.
+    message = " ".join("".join(ch for ch in message if ch.isprintable() or ch.isspace()).split())
+    return message[:300] or None
+
+
 @dataclass(frozen=True)
 class LLMCall:
     provider: str
@@ -87,6 +114,7 @@ class LLMCall:
     outcome: str
     http_status: int | None
     retry_wait_seconds: float = 0.0
+    provider_message: str | None = None
 
 
 class ChatModel(Protocol):
@@ -135,6 +163,7 @@ class LLMAdapter:
         status: int | None = None
         prompt_tokens: int | None = None
         completion_tokens: int | None = None
+        provider_message: str | None = None
         outcome = "error"
         label = f"{model.provider}/{model.model} chat completion"
         try:
@@ -154,14 +183,17 @@ class LLMAdapter:
                 raise LLMError(f"{label}: {type(exc).__name__}") from None
 
             status = response.status_code
+            if 400 <= status < 500:
+                provider_message = _provider_diagnostic(response, key)
             if status == 429:
                 outcome = "rate_limited"
-                raise _TransientLLMError(f"{label}: HTTP 429", retry_delay=_rate_limit_delay(response.headers))
+                raise _TransientLLMError(f"{label}: HTTP 429", retry_delay=_rate_limit_delay(response.headers),
+                                         provider_message=provider_message)
             if 500 <= status < 600:
                 outcome = "server_error"
                 raise _TransientLLMError(f"{label}: HTTP {status}")
             if status != 200:
-                raise LLMError(f"{label}: HTTP {status}")
+                raise LLMError(f"{label}: HTTP {status}", provider_message=provider_message)
 
             try:
                 data = response.json()
@@ -179,7 +211,7 @@ class LLMAdapter:
         finally:
             self.calls.append(LLMCall(
                 model.provider, model.model, round((time.perf_counter() - started) * 1000, 3),
-                prompt_tokens, completion_tokens, outcome, status,
+                prompt_tokens, completion_tokens, outcome, status, provider_message=provider_message,
             ))
 
 

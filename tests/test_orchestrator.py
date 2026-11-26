@@ -14,7 +14,7 @@ from rich.console import Console
 from rewind.agent.llm import LLMCall
 from rewind.config import load_config
 from rewind.flagsmith_ops import FlagsmithOps
-from rewind.orchestrator import REFUSAL, run_check
+from rewind.orchestrator import REFUSAL, Instance, LocalApp, run_check
 from rewind.verifier import VerificationResult
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -205,6 +205,17 @@ def workflow(tmp_path, monkeypatch):
 
 def _target_writes(flags):
     return [row[1:] for row in flags.writes if row[0] == TARGET]
+
+
+def test_groq_only_app_does_not_inherit_an_ambient_gemini_key(tmp_path, monkeypatch):
+    config = load_config(ROOT / "examples/demo-shop/rewind.config.yaml")
+    assert config.agent is not None and config.agent.fallback is None
+    monkeypatch.setenv("GEMINI_API_KEY", "validation-unused-gemini-fixture")
+    monkeypatch.setenv(config.flagsmith.rehearsal.key_env, "validation-active-env-fixture")
+    instance = Instance(REHEARSAL, 8001, tmp_path / "app.db", tmp_path / "state.json")
+    child = LocalApp(config, tmp_path)._env(instance)
+    assert "GEMINI_API_KEY" not in child
+    assert child["FLAGSMITH_ENV_KEY"] == "validation-active-env-fixture"
 
 
 def test_correct_proposal_replays_with_one_yes_at_each_gate(workflow):

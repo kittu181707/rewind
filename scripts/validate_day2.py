@@ -20,6 +20,7 @@ import requests
 from dotenv import dotenv_values, load_dotenv
 from rich.console import Console
 
+from rewind.agent.llm import LLMAdapter
 from rewind.agent.tools import AttemptTools, ToolError
 from rewind.approvals import SCRIPTED_APPROVER
 from rewind.config import RewindConfig, load_config
@@ -43,6 +44,15 @@ AUTH_URL_BYTES = re.compile(AUTH_URL.pattern.encode(), re.IGNORECASE)
 
 class ValidationError(RuntimeError):
     pass
+
+
+class FirstProposalModel(LLMAdapter):
+    """V3–V5 stop before another diagnosis if the first proposal failed."""
+
+    def complete(self, messages, tools):
+        if len(messages) == 2 and json.loads(messages[1]["content"])["previous_attempts"]:
+            raise ValidationError("The first rehearsal proposal failed; review its diagnosis before continuing")
+        return super().complete(messages, tools)
 
 
 @dataclass(frozen=True)
@@ -257,8 +267,12 @@ def run_scenario(scenario: Scenario, number: int, config: RewindConfig, folder: 
             command = f"rewind check --config {DEFAULT_CONFIG.relative_to(ROOT)}"
             print(f"{label}: {command} (shared run_check implementation; scripted approval input)", file=transcript)
             variant = "no_compat" if scenario.case == "refusal" else None
+            model = None
+            if scenario.status == "verified":
+                assert config.agent is not None
+                model = FirstProposalModel(config.agent)
             with variable("APP_VARIANT", variant):
-                result = run_check(config, ROOT, ops=ops,
+                result = run_check(config, ROOT, ops=ops, model=model,
                                    console=Console(file=transcript, width=135, force_terminal=False),
                                    input_fn=answer, approver=SCRIPTED_APPROVER)
             row["evidence"] = str(result.evidence.relative_to(ROOT))

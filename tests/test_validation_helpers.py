@@ -105,6 +105,15 @@ def test_retry_never_follows_a_target_write_or_agent_refusal():
     assert validate_day2.is_flaky({"writes": []}, {"status": "stopped", "error_kind": "provider"})
 
 
+def test_verified_validation_cases_stop_at_first_rejected_proposal():
+    config = load_config(CONFIG)
+    assert config.agent
+    adapter = validate_day2.FirstProposalModel(config.agent, post=lambda *a, **kw: pytest.fail("Unexpected provider request"))
+    messages = [{"role": "system"}, {"role": "user", "content": '{"previous_attempts":[{"status":"failed"}]}'}]
+    with pytest.raises(validate_day2.ValidationError, match="first rehearsal proposal failed"):
+        adapter.complete(messages, [])
+
+
 def test_secret_audit_counts_occurrences_without_values_or_urls(tmp_path, monkeypatch):
     marker = "fake-value-only-for-counting"
     url = "https://" + "provider.invalid/oauth/authorize?test=1"

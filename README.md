@@ -21,6 +21,8 @@ When connecting another test app, supply your own **trusted journey command**. R
 
 The approval registry is in-process, not cryptographic protection or a sandbox for Python code. Rewind's model tools cannot invoke the approval functions or execute Flagsmith operations; trusted runner code owns both gates and any writes.
 
+The demo uses Groq `openai/gpt-oss-120b` only. Gemini `gemini-3.6-flash` fallback is disabled and unsupported for this demo: none of the three synthetic tool exchanges completed (one initial timeout and two initial HTTP 503 responses). Those results do not establish whether Gemini accepts the tool schema.
+
 ## Prior Work
 
 A pre-event throwaway spike in `~/rewind-spike` verified the Flagsmith CLI v2.0.0 mutation syntax, remote identity evaluation, and edge-convergence behavior before hacking began.

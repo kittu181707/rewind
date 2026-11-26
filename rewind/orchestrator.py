@@ -74,7 +74,8 @@ class LocalApp:
 
     def _env(self, instance: Instance) -> dict[str, str]:
         env = dict(os.environ)
-        for name in ("FLAGSMITH_API_KEY", self.config.flagsmith.rehearsal.key_env, self.config.flagsmith.target.key_env):
+        for name in ("FLAGSMITH_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY",
+                     self.config.flagsmith.rehearsal.key_env, self.config.flagsmith.target.key_env):
             env.pop(name, None)
         if self.config.agent:
             env.pop(self.config.agent.key_env, None)

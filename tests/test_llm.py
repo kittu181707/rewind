@@ -63,6 +63,29 @@ def test_nontransient_http_error_never_retries_or_falls_back(model_config, statu
     assert len(adapter.calls) == 1
 
 
+def test_provider_error_records_only_redacted_300_character_message(model_config):
+    url = "https://" + "provider.invalid/oauth/login?test=1"
+    diagnostic = f'Unknown name "additionalProperties". Key fixture-groq-only. URL {url}. ' + "x" * 400
+    adapter = LLMAdapter(model_config, post=lambda *args, **kwargs: response(400, {
+        "error": {"message": diagnostic, "details": "unretained details"},
+    }))
+    with pytest.raises(LLMError, match="Unknown name") as exc:
+        adapter.complete([], [])
+    message = adapter.calls[0].provider_message
+    assert message is not None and len(message) == 300 and exc.value.provider_message == message
+    assert "additionalProperties" in message and "<REDACTED>" in message
+    assert all(part not in str(exc.value) for part in ("fixture-groq-only", url, "unretained details"))
+
+
+def test_provider_diagnostic_drops_reflected_body_and_headers(model_config):
+    adapter = LLMAdapter(model_config, post=lambda *args, **kwargs: response(400, {
+        "error": {"message": 'Invalid tools. Request body: {"messages": ["private content"]}'},
+    }))
+    with pytest.raises(LLMError, match="Invalid tools"):
+        adapter.complete([], [])
+    assert adapter.calls[0].provider_message == "Invalid tools."
+
+
 @pytest.mark.parametrize("header, wait", [("2", 2.0), ("75", 60.0), (None, 1.0)])
 def test_rate_limit_honors_retry_after_then_falls_back(model_config, header, wait):
     limited = response(429)

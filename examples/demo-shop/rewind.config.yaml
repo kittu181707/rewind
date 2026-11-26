@@ -30,4 +30,5 @@ agent:
   model: openai/gpt-oss-120b
   key_env: GROQ_API_KEY
   max_attempts: 3
-  fallback: { provider: gemini, model: gemini-3.6-flash, key_env: GEMINI_API_KEY }
+  # Gemini fallback is disabled: its synthetic tool exchange did not complete.
+  # The demo and live validation use Groq only.

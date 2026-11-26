@@ -1,8 +1,10 @@
 """Unit tests for rewind.flagsmith_ops, rewind.approvals, and rewind.snapshot."""
 
+import copy
 import json
-import subprocess
 from pathlib import Path
+import subprocess
+
 import pytest
 
 from rewind.approvals import issue_token
@@ -46,43 +48,83 @@ allowed:
 
 
 class FakeFlagsmithRunner:
-    def __init__(self):
+    def __init__(self, first_call_secret: str | None = None):
         self.calls: list[list[str]] = []
+        self.first_call_secret = first_call_secret
         self.flags = {
             "checkout_v2": {"enabled": False, "value": None, "segment_overrides": 0, "identity_overrides": 0},
             "cart_compat_reader": {"enabled": False, "value": None, "segment_overrides": 0, "identity_overrides": 0},
         }
-        self.overrides: dict[tuple[str, str], dict] = {}
+        self.seg_overrides: dict[tuple[str, str], dict] = {}
+        self.id_overrides: dict[tuple[str, str], dict] = {}
+        self.segments = [
+            {
+                "id": 1201561,
+                "name": "vip_users",
+                "rules": {
+                    "type": "ALL",
+                    "conditions": [{"property": "is_vip", "operator": "EQUAL", "value": "true"}],
+                },
+            }
+        ]
 
     def __call__(self, args: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
         self.calls.append(args)
         sub = args[1:3]
+        if sub == ["segment", "list"]:
+            payload = copy.deepcopy(self.segments)
+            if self.first_call_secret and len(self.calls) == 1:
+                payload[0]["api_token"] = self.first_call_secret
+            return subprocess.CompletedProcess(args, 0, json.dumps(payload), "")
         if sub == ["flag", "get"]:
             flag = args[3]
             if "--segment" in args:
                 seg = args[args.index("--segment") + 1]
-                ov = self.overrides.get((flag, seg))
+                ov = self.seg_overrides.get((flag, seg))
                 if ov is None:
                     return subprocess.CompletedProcess(args, 1, "", "Error: segment override not found")
                 return subprocess.CompletedProcess(args, 0, json.dumps(ov), "")
+            if "--identifier" in args:
+                ident = args[args.index("--identifier") + 1]
+                ov = self.id_overrides.get((flag, ident))
+                if ov is None:
+                    return subprocess.CompletedProcess(args, 1, "", "Error: no override for identifier")
+                return subprocess.CompletedProcess(args, 0, json.dumps(ov), "")
             data = dict(self.flags[flag])
             data["feature"] = flag
+            if self.first_call_secret and len(self.calls) == 1:
+                data["service_token"] = self.first_call_secret
             return subprocess.CompletedProcess(args, 0, json.dumps(data), "")
         if sub == ["flag", "update"]:
             flag = args[3]
             enabled = "--enable" in args
             if "--segment" in args:
                 seg = args[args.index("--segment") + 1]
-                self.overrides[(flag, seg)] = {"feature": flag, "segment": {"name": seg}, "priority": 0, "enabled": enabled, "value": None}
-                self.flags[flag]["segment_overrides"] = len([k for k in self.overrides if k[0] == flag])
+                self.seg_overrides[(flag, seg)] = {
+                    "feature": flag,
+                    "segment": {"name": seg},
+                    "priority": 0,
+                    "enabled": enabled,
+                    "value": None,
+                }
+                self.flags[flag]["segment_overrides"] = len([k for k in self.seg_overrides if k[0] == flag])
+            elif "--identifier" in args:
+                ident = args[args.index("--identifier") + 1]
+                self.id_overrides[(flag, ident)] = {"feature": flag, "identifier": ident, "enabled": enabled, "value": None}
+                self.flags[flag]["identity_overrides"] = len([k for k in self.id_overrides if k[0] == flag])
             else:
                 self.flags[flag]["enabled"] = enabled
             return subprocess.CompletedProcess(args, 0, "ok", "")
         if sub == ["flag", "delete"]:
             flag = args[3]
-            seg = args[args.index("--segment") + 1]
-            self.overrides.pop((flag, seg), None)
-            self.flags[flag]["segment_overrides"] = len([k for k in self.overrides if k[0] == flag])
+            if "--segment" in args:
+                seg = args[args.index("--segment") + 1]
+                self.seg_overrides.pop((flag, seg), None)
+                self.flags[flag]["segment_overrides"] = len([k for k in self.seg_overrides if k[0] == flag])
+            elif "--identifier" in args:
+                ident = args[args.index("--identifier") + 1]
+                self.id_overrides.pop((flag, ident), None)
+                self.flags[flag]["identity_overrides"] = len([k for k in self.id_overrides if k[0] == flag])
             return subprocess.CompletedProcess(args, 0, "", "")
         return subprocess.CompletedProcess(args, 1, "", "unknown test command")
 
@@ -92,40 +134,73 @@ def test_allowlist_and_approval_enforcement(tmp_path: Path, monkeypatch):
     runner = FakeFlagsmithRunner()
     ops = FlagsmithOps(cfg, cli_path="/usr/local/bin/flagsmith", runner=runner)
 
-    # Missing approval
     with pytest.raises(FlagsmithOpsError, match="ApprovalToken"):
         ops.apply_operation("rehearsal", "checkout_v2", "environment_default", "set_off", approval=None)
 
-    # Mismatched environment approval
     wrong_tok = issue_token("rehearsal", "demo-target")
     with pytest.raises(FlagsmithOpsError, match="ApprovalToken"):
         ops.apply_operation("rehearsal", "checkout_v2", "environment_default", "set_off", approval=wrong_tok)
 
     tok = issue_token("rehearsal", "rehearsal")
-    # Disallowed environment
     with pytest.raises(FlagsmithOpsError, match="allowlist"):
         ops.apply_operation("production", "checkout_v2", "environment_default", "set_off", approval=issue_token("prod", "production"))
 
-    # Disallowed flag
     with pytest.raises(FlagsmithOpsError, match="allowed.flags"):
         ops.apply_operation("rehearsal", "other_flag", "environment_default", "set_off", approval=tok)
 
-    # Disallowed scope (identity:alice is not in allowed.scopes)
     with pytest.raises(FlagsmithOpsError, match="allowed.scopes"):
         ops.apply_operation("rehearsal", "checkout_v2", "identity:alice", "set_off", approval=tok)
 
-    # Disallowed operation
     with pytest.raises(FlagsmithOpsError, match="allowed.operations"):
         ops.apply_operation("rehearsal", "checkout_v2", "environment_default", "create_flag", approval=tok)
 
-    # Cannot delete_override on environment_default
     with pytest.raises(FlagsmithOpsError, match="environment_default"):
         ops.apply_operation("rehearsal", "checkout_v2", "environment_default", "delete_override", approval=tok)
 
     assert runner.calls == []
 
 
-def test_snapshot_hash_changes_and_logs_redacted(tmp_path: Path, monkeypatch):
+def test_first_command_log_redacts_newly_returned_credentials(tmp_path: Path, monkeypatch):
+    cfg = _make_config(tmp_path, monkeypatch)
+    synthetic_secret = "synthetic_returned_cred_987654"
+    runner = FakeFlagsmithRunner(first_call_secret=synthetic_secret)
+    ops = FlagsmithOps(cfg, cli_path="/usr/local/bin/flagsmith", runner=runner)
+
+    ops.list_segments()
+    assert len(ops.command_log) == 1
+    assert synthetic_secret not in ops.command_log[0].stdout
+    assert "<REDACTED>" in ops.command_log[0].stdout
+
+
+def test_clear_identity_override_requires_setup_cleanup_authority(tmp_path: Path, monkeypatch):
+    cfg = _make_config(tmp_path, monkeypatch)
+    runner = FakeFlagsmithRunner()
+    runner.id_overrides[("checkout_v2", "alice")] = {"enabled": True, "value": None}
+    runner.flags["checkout_v2"]["identity_overrides"] = 1
+    ops = FlagsmithOps(cfg, cli_path="/usr/local/bin/flagsmith", runner=runner)
+
+    # Runtime phase tokens must not be permitted to run setup/cleanup identity deletion
+    with pytest.raises(FlagsmithOpsError, match="Setup/cleanup authority"):
+        ops.clear_identity_override_if_present("rehearsal", "checkout_v2", "alice", issue_token("rehearsal", "rehearsal"))
+    with pytest.raises(FlagsmithOpsError, match="Setup/cleanup authority"):
+        ops.clear_identity_override_if_present("rehearsal", "checkout_v2", "alice", issue_token("target", "rehearsal"))
+
+    # Unknown user identifier must be rejected even with cleanup authority
+    cleanup_tok = issue_token("cleanup", "rehearsal")
+    with pytest.raises(FlagsmithOpsError, match="not a configured user"):
+        ops.clear_identity_override_if_present("rehearsal", "checkout_v2", "eve", cleanup_tok)
+
+    # Runtime apply_operation still enforces allowed.scopes even with cleanup token
+    with pytest.raises(FlagsmithOpsError, match="allowed.scopes"):
+        ops.apply_operation("rehearsal", "checkout_v2", "identity:alice", "delete_override", cleanup_tok)
+
+    # Explicit cleanup authority deletes configured user's stale override
+    removed = ops.clear_identity_override_if_present("rehearsal", "checkout_v2", "alice", cleanup_tok)
+    assert removed is True
+    assert runner.flags["checkout_v2"]["identity_overrides"] == 0
+
+
+def test_snapshot_hash_tracks_rules_identity_values_and_rejects_untracked(tmp_path: Path, monkeypatch):
     cfg = _make_config(tmp_path, monkeypatch)
     runner = FakeFlagsmithRunner()
     ops = FlagsmithOps(cfg, cli_path="/usr/local/bin/flagsmith", runner=runner)
@@ -134,17 +209,42 @@ def test_snapshot_hash_changes_and_logs_redacted(tmp_path: Path, monkeypatch):
     snap2 = take_snapshot(ops, cfg, "rehearsal")
     assert snap1.hash == snap2.hash
 
+    # Changing segment membership rules must change snapshot hash
+    runner.segments[0]["rules"]["conditions"][0]["value"] = "false"
+    snap_rules = take_snapshot(ops, cfg, "rehearsal")
+    assert snap_rules.hash != snap1.hash
+
+    # Changing identity override value while keeping count=1 must change snapshot hash
+    runner.id_overrides[("checkout_v2", "alice")] = {"enabled": True, "value": None}
+    runner.flags["checkout_v2"]["identity_overrides"] = 1
+    snap_id_true = take_snapshot(ops, cfg, "rehearsal")
+
+    runner.id_overrides[("checkout_v2", "alice")] = {"enabled": False, "value": None}
+    snap_id_false = take_snapshot(ops, cfg, "rehearsal")
+    assert snap_id_false.hash != snap_id_true.hash
+
+    # Unconfigured segment or identity override must be explicitly rejected
+    runner.flags["checkout_v2"]["identity_overrides"] = 2  # extra unconfigured user
+    with pytest.raises(FlagsmithOpsError, match="Unsupported or unconfigured identity override"):
+        take_snapshot(ops, cfg, "rehearsal")
+
+    runner.flags["checkout_v2"]["identity_overrides"] = 1
+    runner.flags["checkout_v2"]["segment_overrides"] = 1  # unconfigured segment
+    with pytest.raises(FlagsmithOpsError, match="Unsupported or unconfigured segment override"):
+        take_snapshot(ops, cfg, "rehearsal")
+    runner.flags["checkout_v2"]["segment_overrides"] = 0
+
     tok = issue_token("rehearsal", "rehearsal")
     ops.apply_operation("rehearsal", "cart_compat_reader", "environment_default", "set_on", approval=tok)
     snap3 = take_snapshot(ops, cfg, "rehearsal")
-    assert snap3.hash != snap1.hash
+    assert snap3.hash != snap_id_false.hash
 
     ops.apply_operation("rehearsal", "checkout_v2", "segment:vip_users", "set_on", approval=tok)
     snap4 = take_snapshot(ops, cfg, "rehearsal")
     assert snap4.hash != snap3.hash
     assert snap4.state["flags"]["checkout_v2"]["overrides"]["vip_users"]["enabled"] is True
 
-    # Verify redaction of SDK key in all command logs
     for entry in ops.command_log:
         assert "rehearsal_dummy_sdk_key_12345" not in entry.command
-        assert "<REDACTED>" in entry.command
+        if "--environment" in entry.command:
+            assert "<REDACTED>" in entry.command

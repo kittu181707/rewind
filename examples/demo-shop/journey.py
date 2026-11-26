@@ -108,7 +108,7 @@ def poll_eval_three_consecutive(
             flags = {k: bool(v) for k, v in body["effective_flags"].items()}
             if expected_flags is not None:
                 for k, want in expected_flags.items():
-                    if flags.get(k) != want:
+                    if k not in flags or not isinstance(flags[k], bool) or flags[k] is not bool(want):
                         all_ok = False
             current_flags_only[uid] = flags
 

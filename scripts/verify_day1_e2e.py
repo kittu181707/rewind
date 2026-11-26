@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import argparse
 import copy
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 import json
 import os
+import sqlite3
 import subprocess
 import sys
-import tempfile
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -85,7 +87,7 @@ def _stop_shop(proc: subprocess.Popen[str] | None) -> None:
         proc.wait(timeout=5)
 
 
-def _reset_db(db_path: Path, writes_log: list[str]) -> None:
+def _reset_db(db_path: Path, label: str, writes_log: list[str]) -> None:
     subprocess.run(
         [sys.executable, str(REPO_ROOT / "examples" / "demo-shop" / "reset.py"), "--db", str(db_path)],
         cwd=str(REPO_ROOT),
@@ -93,7 +95,31 @@ def _reset_db(db_path: Path, writes_log: list[str]) -> None:
         capture_output=True,
         text=True,
     )
-    writes_log.append(f"SQLite fixture reset written: {db_path}")
+    writes_log.append(f"[{label}] SQLite reset -> {db_path} (3 customers, 3 v1 carts)")
+
+
+def _inspect_db_writes(db_path: Path, label: str) -> list[str]:
+    """Enumerate actual SQLite cart mutations and order inserts recorded in db_path."""
+    if not db_path.exists():
+        return []
+    entries: list[str] = []
+    conn = sqlite3.connect(str(db_path))
+    try:
+        carts = conn.execute(
+            "SELECT cart_id, user_id, schema_version, updated_at FROM carts ORDER BY user_id"
+        ).fetchall()
+        for cart_id, uid, schema_ver, updated_at in carts:
+            entries.append(f"[{label}] SQLite cart row -> {cart_id} (user={uid}, schema={schema_ver}, updated={updated_at})")
+        orders = conn.execute(
+            "SELECT order_id, cart_id, user_id, executed_version, total_items, total_cents FROM orders ORDER BY rowid"
+        ).fetchall()
+        for oid, cid, uid, exec_ver, qty, cents in orders:
+            entries.append(
+                f"[{label}] SQLite order insert -> {oid} (user={uid}, cart={cid}, executed={exec_ver}, items={qty}, cents={cents})"
+            )
+    finally:
+        conn.close()
+    return entries
 
 
 def _verify(
@@ -101,6 +127,7 @@ def _verify(
     base_url: str,
     phase: str,
     state_file: Path,
+    journey_out_file: Path,
     expect_flags: dict[str, bool] | None = None,
     eval_timeout: float = 30.0,
 ) -> VerificationResult:
@@ -114,19 +141,71 @@ def _verify(
     ]
     if expect_flags is not None:
         extra.extend(["--expect-json", json.dumps(expect_flags)])
-    return verify_journey(cfg, base_url=base_url, phase=phase, extra_args=extra, poll_eval=False)
+    res = verify_journey(cfg, base_url=base_url, phase=phase, extra_args=extra, poll_eval=False)
+    journey_out_file.parent.mkdir(parents=True, exist_ok=True)
+    journey_out_file.write_text(
+        json.dumps(
+            {
+                "ok": res.ok,
+                "phase": res.phase,
+                "exit_code": res.exit_code,
+                "summary": res.summary,
+                "user_outcomes": res.user_outcomes,
+                "failed_assertions": res.failed_assertions,
+                "steps": res.steps,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return res
 
 
-def main() -> int:
+def _flush_evidence(
+    out_dir: Path,
+    rows: list[CaseRow],
+    target_flag_changes: list[str],
+    fixture_writes: list[str],
+    ops_list: list[tuple[str, FlagsmithOps]],
+    status: str,
+) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    command_logs: dict[str, list[dict[str, Any]]] = {}
+    for label, ops_inst in ops_list:
+        command_logs[label] = [asdict(rec) for rec in ops_inst.command_log]
+
+    payload = {
+        "status": status,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "rows": [asdict(r) for r in rows],
+        "target_flag_changes": target_flag_changes,
+        "fixture_writes": fixture_writes,
+        "command_logs": command_logs,
+    }
+    summary_path = out_dir / "summary.json"
+    summary_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return summary_path
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Run live no-LLM Step 9 E2E verification.")
+    parser.add_argument("--output-dir", default=None, help="Directory for persistent redacted E2E evidence.")
+    args = parser.parse_args(argv)
+
     load_dotenv(REPO_ROOT / ".env")
     cfg = load_config(REPO_ROOT / "examples" / "demo-shop" / "rewind.config.yaml")
 
-    # Config copy permitting identity:alice ONLY for negative proof tests
+    # Test-scoped config copy permitting identity:alice ONLY for negative verification proofs.
     cfg_identity = copy.deepcopy(cfg)
     cfg_identity.allowed.scopes.append("identity:alice")
 
     ops = FlagsmithOps(cfg)
     ops_identity = FlagsmithOps(cfg_identity)
+
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    out_dir = Path(args.output_dir) if args.output_dir else (REPO_ROOT / "artifacts" / "e2e" / run_id)
+    journeys_dir = out_dir / "journeys"
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     rehearsal_env = cfg.flagsmith.rehearsal.environment
     target_env = cfg.flagsmith.target.environment
@@ -138,202 +217,417 @@ def main() -> int:
     rows: list[CaseRow] = []
     target_flag_changes: list[str] = []
     fixture_writes: list[str] = []
+    step_idx = 0
+
+    def record_or_fail(row: CaseRow) -> None:
+        rows.append(row)
+        if not row.passed:
+            summary_path = _flush_evidence(
+                out_dir,
+                rows,
+                target_flag_changes,
+                fixture_writes,
+                [("ops", ops), ("ops_identity", ops_identity)],
+                status="FAILED_FAST",
+            )
+            raise RuntimeError(
+                f"Step 9 fail-fast abort at {row.scenario} / {row.step}: "
+                f"expected={row.expected}, observed={row.observed} (alice={row.alice}, carol={row.carol}, bob={row.bob}). "
+                f"Redacted evidence saved to {summary_path}"
+            )
+
+    def next_journey_path(tag: str) -> Path:
+        nonlocal step_idx
+        step_idx += 1
+        return journeys_dir / f"{step_idx:02d}_{tag}.json"
 
     target_snap_before = take_snapshot(ops, cfg, target_env)
 
-    with tempfile.TemporaryDirectory(prefix="rewind_day1_e2e_") as td:
-        td_path = Path(td)
-        rehearsal_db = td_path / "rehearsal.db"
-        rehearsal_state = td_path / "rehearsal_state.json"
-        target_db = td_path / "target.db"
-        target_state = td_path / "target_state.json"
+    rehearsal_db = out_dir / "rehearsal.db"
+    rehearsal_state = out_dir / "rehearsal_state.json"
+    target_db = out_dir / "target.db"
+    target_state = out_dir / "target_state.json"
 
-        # ------------------------------------------------------------------
-        # CASE A (Loud 500) on rehearsal
-        # ------------------------------------------------------------------
-        proc = None
-        try:
-            seed_case(ops, cfg, rehearsal_env, "a")
-            _reset_db(rehearsal_db, fixture_writes)
-            proc = _start_shop(cfg.app.rehearsal_port, rehearsal_db, rehearsal_key)
+    # ------------------------------------------------------------------
+    # CASE A (Loud 500) on rehearsal
+    # ------------------------------------------------------------------
+    proc = None
+    try:
+        seed_case(ops, cfg, rehearsal_env, "a")
+        _reset_db(rehearsal_db, "Case A", fixture_writes)
+        proc = _start_shop(cfg.app.rehearsal_port, rehearsal_db, rehearsal_key)
 
-            prep = _verify(cfg, rehearsal_url, "prepare", rehearsal_state)
-            assert prep.ok, f"Case A prepare failed: {prep.summary}"
+        prep = _verify(cfg, rehearsal_url, "prepare", rehearsal_state, next_journey_path("case_a_prepare"))
+        assert prep.ok, f"Case A prepare failed: {prep.summary}"
 
-            tok = issue_token("rehearsal", rehearsal_env)
-            ops.apply_operation(rehearsal_env, "checkout_v2", "environment_default", "set_off", tok)
-            v_rb = _verify(cfg, rehearsal_url, "verify", rehearsal_state, {"checkout_v2": False})
-            a_ok = (
+        tok = issue_token("rehearsal", rehearsal_env)
+        ops.apply_operation(rehearsal_env, "checkout_v2", "environment_default", "set_off", tok)
+        v_rb = _verify(cfg, rehearsal_url, "verify", rehearsal_state, next_journey_path("case_a_rollback"), {"checkout_v2": False})
+        record_or_fail(CaseRow(
+            "Case A",
+            "Rollback only",
+            "FAIL (500 loud)",
+            "FAIL" if not v_rb.ok else "PASS",
+            _fmt_user(v_rb, "alice"),
+            _fmt_user(v_rb, "carol"),
+            _fmt_user(v_rb, "bob"),
+            (
                 not v_rb.ok
                 and v_rb.user_outcomes["alice"]["http_status"] == 500
                 and v_rb.user_outcomes["carol"]["http_status"] == 500
                 and v_rb.user_outcomes["bob"]["http_status"] == 200
                 and v_rb.user_outcomes["bob"]["executed_version"] == "legacy"
+            ),
+        ))
+
+        blocked = False
+        try:
+            ops.apply_operation(rehearsal_env, "cart_compat_reader", "identity:alice", "set_on", tok)
+        except FlagsmithOpsError:
+            blocked = True
+        assert blocked, "Default config should block identity:alice"
+
+        tok_id = issue_token("rehearsal-negative-test", rehearsal_env)
+        tok_cleanup = issue_token("cleanup", rehearsal_env)
+        ops_identity.apply_operation(rehearsal_env, "cart_compat_reader", "identity:alice", "set_on", tok_id)
+        try:
+            v_id = _verify(
+                cfg,
+                rehearsal_url,
+                "verify",
+                rehearsal_state,
+                next_journey_path("case_a_identity_alice"),
+                {"checkout_v2": False},
+                eval_timeout=15.0,
             )
-            rows.append(CaseRow("Case A", "Rollback only", "FAIL (500 loud)", "FAIL" if not v_rb.ok else "PASS", _fmt_user(v_rb, "alice"), _fmt_user(v_rb, "carol"), _fmt_user(v_rb, "bob"), a_ok))
-
-            # Confirm default config blocks identity:alice at ops layer
-            blocked = False
-            try:
-                ops.apply_operation(rehearsal_env, "cart_compat_reader", "identity:alice", "set_on", tok)
-            except FlagsmithOpsError:
-                blocked = True
-            assert blocked, "Default config should block identity:alice"
-
-            # Apply identity:alice patch via test-scoped ops_identity -> verifier must STILL fail (carol 500)
-            tok_id = issue_token("rehearsal-negative-test", rehearsal_env)
-            ops_identity.apply_operation(rehearsal_env, "cart_compat_reader", "identity:alice", "set_on", tok_id)
-            try:
-                v_id = _verify(cfg, rehearsal_url, "verify", rehearsal_state, {"checkout_v2": False}, eval_timeout=15.0)
-                id_ok = (
+            record_or_fail(CaseRow(
+                "Case A",
+                "identity:alice compat",
+                "FAIL (carol 500)",
+                "FAIL" if not v_id.ok else "PASS",
+                _fmt_user(v_id, "alice"),
+                _fmt_user(v_id, "carol"),
+                _fmt_user(v_id, "bob"),
+                (
                     not v_id.ok
                     and v_id.user_outcomes["alice"]["http_status"] == 200
                     and v_id.user_outcomes["carol"]["http_status"] == 500
-                )
-                rows.append(CaseRow("Case A", "identity:alice compat", "FAIL (carol 500)", "FAIL" if not v_id.ok else "PASS", _fmt_user(v_id, "alice"), _fmt_user(v_id, "carol"), _fmt_user(v_id, "bob"), id_ok))
-            finally:
-                ops_identity.clear_identity_override_if_present(rehearsal_env, "cart_compat_reader", "alice", tok_id)
-
-            # Apply right fix: cart_compat_reader set_on at environment_default
-            ops.apply_operation(rehearsal_env, "cart_compat_reader", "environment_default", "set_on", tok)
-            v_fix = _verify(cfg, rehearsal_url, "verify", rehearsal_state, {"checkout_v2": False, "cart_compat_reader": True})
-            rows.append(CaseRow("Case A", "compat environment_default set_on", "PASS", "PASS" if v_fix.ok else "FAIL", _fmt_user(v_fix, "alice"), _fmt_user(v_fix, "carol"), _fmt_user(v_fix, "bob"), v_fix.ok))
+                ),
+            ))
         finally:
-            _stop_shop(proc)
+            ops_identity.clear_identity_override_if_present(rehearsal_env, "cart_compat_reader", "alice", tok_cleanup)
 
-        # ------------------------------------------------------------------
-        # CASE B (Silent segment override) on rehearsal
-        # ------------------------------------------------------------------
-        proc = None
-        try:
-            seed_case(ops, cfg, rehearsal_env, "b")
-            _reset_db(rehearsal_db, fixture_writes)
-            proc = _start_shop(cfg.app.rehearsal_port, rehearsal_db, rehearsal_key)
+        ops.apply_operation(rehearsal_env, "cart_compat_reader", "environment_default", "set_on", tok)
+        v_fix = _verify(
+            cfg,
+            rehearsal_url,
+            "verify",
+            rehearsal_state,
+            next_journey_path("case_a_fix"),
+            {"checkout_v2": False, "cart_compat_reader": True},
+        )
+        record_or_fail(CaseRow(
+            "Case A",
+            "compat environment_default set_on",
+            "PASS",
+            "PASS" if v_fix.ok else "FAIL",
+            _fmt_user(v_fix, "alice"),
+            _fmt_user(v_fix, "carol"),
+            _fmt_user(v_fix, "bob"),
+            v_fix.ok,
+        ))
+        fixture_writes.extend(_inspect_db_writes(rehearsal_db, "Case A"))
+    finally:
+        _stop_shop(proc)
 
-            prep = _verify(cfg, rehearsal_url, "prepare", rehearsal_state)
-            assert prep.ok, f"Case B prepare failed: {prep.summary}"
+    # ------------------------------------------------------------------
+    # CASE B (Silent segment override) on rehearsal
+    # ------------------------------------------------------------------
+    proc = None
+    try:
+        seed_case(ops, cfg, rehearsal_env, "b")
+        _reset_db(rehearsal_db, "Case B (set_off)", fixture_writes)
+        proc = _start_shop(cfg.app.rehearsal_port, rehearsal_db, rehearsal_key)
 
-            tok = issue_token("rehearsal", rehearsal_env)
-            ops.apply_operation(rehearsal_env, "checkout_v2", "environment_default", "set_off", tok)
-            v_silent = _verify(cfg, rehearsal_url, "verify", rehearsal_state, {"checkout_v2": False}, eval_timeout=10.0)
-            silent_ok = (
+        prep = _verify(cfg, rehearsal_url, "prepare", rehearsal_state, next_journey_path("case_b_prepare"))
+        assert prep.ok, f"Case B prepare failed: {prep.summary}"
+
+        tok = issue_token("rehearsal", rehearsal_env)
+        ops.apply_operation(rehearsal_env, "checkout_v2", "environment_default", "set_off", tok)
+        v_silent = _verify(
+            cfg,
+            rehearsal_url,
+            "verify",
+            rehearsal_state,
+            next_journey_path("case_b_rollback"),
+            {"checkout_v2": False},
+            eval_timeout=10.0,
+        )
+        record_or_fail(CaseRow(
+            "Case B",
+            "Rollback only (silent)",
+            "FAIL (alice/carol v2)",
+            "FAIL" if not v_silent.ok else "PASS",
+            _fmt_user(v_silent, "alice"),
+            _fmt_user(v_silent, "carol"),
+            _fmt_user(v_silent, "bob"),
+            (
                 not v_silent.ok
                 and v_silent.user_outcomes["alice"]["http_status"] == 200
                 and v_silent.user_outcomes["alice"]["executed_version"] == "v2"
                 and v_silent.user_outcomes["carol"]["http_status"] == 200
                 and v_silent.user_outcomes["carol"]["executed_version"] == "v2"
                 and v_silent.user_outcomes["bob"]["executed_version"] == "legacy"
+            ),
+        ))
+
+        ops.apply_operation(rehearsal_env, "checkout_v2", "environment_default", "set_off", tok)
+        v_env = _verify(
+            cfg,
+            rehearsal_url,
+            "verify",
+            rehearsal_state,
+            next_journey_path("case_b_env_default"),
+            {"checkout_v2": False},
+            eval_timeout=10.0,
+        )
+        record_or_fail(CaseRow(
+            "Case B",
+            "environment_default set_off",
+            "FAIL (still v2)",
+            "FAIL" if not v_env.ok else "PASS",
+            _fmt_user(v_env, "alice"),
+            _fmt_user(v_env, "carol"),
+            _fmt_user(v_env, "bob"),
+            (
+                not v_env.ok
+                and v_env.user_outcomes["alice"]["executed_version"] == "v2"
+                and v_env.user_outcomes["carol"]["executed_version"] == "v2"
+            ),
+        ))
+
+        tok_id = issue_token("rehearsal-negative-test", rehearsal_env)
+        tok_cleanup = issue_token("cleanup", rehearsal_env)
+        ops_identity.apply_operation(rehearsal_env, "checkout_v2", "identity:alice", "set_off", tok_id)
+        try:
+            v_idb = _verify(
+                cfg,
+                rehearsal_url,
+                "verify",
+                rehearsal_state,
+                next_journey_path("case_b_identity_alice"),
+                {"checkout_v2": False},
+                eval_timeout=10.0,
             )
-            rows.append(CaseRow("Case B", "Rollback only (silent)", "FAIL (alice/carol v2)", "FAIL" if not v_silent.ok else "PASS", _fmt_user(v_silent, "alice"), _fmt_user(v_silent, "carol"), _fmt_user(v_silent, "bob"), silent_ok))
-
-            # Re-applying environment default must still FAIL
-            ops.apply_operation(rehearsal_env, "checkout_v2", "environment_default", "set_off", tok)
-            v_env = _verify(cfg, rehearsal_url, "verify", rehearsal_state, {"checkout_v2": False}, eval_timeout=10.0)
-            env_ok = not v_env.ok and v_env.user_outcomes["alice"]["executed_version"] == "v2" and v_env.user_outcomes["carol"]["executed_version"] == "v2"
-            rows.append(CaseRow("Case B", "environment_default set_off", "FAIL (still v2)", "FAIL" if not v_env.ok else "PASS", _fmt_user(v_env, "alice"), _fmt_user(v_env, "carol"), _fmt_user(v_env, "bob"), env_ok))
-
-            # identity:alice set_off must FAIL (carol still v2)
-            tok_id = issue_token("rehearsal-negative-test", rehearsal_env)
-            ops_identity.apply_operation(rehearsal_env, "checkout_v2", "identity:alice", "set_off", tok_id)
-            try:
-                v_idb = _verify(cfg, rehearsal_url, "verify", rehearsal_state, {"checkout_v2": False}, eval_timeout=10.0)
-                idb_ok = (
+            record_or_fail(CaseRow(
+                "Case B",
+                "identity:alice set_off",
+                "FAIL (carol v2)",
+                "FAIL" if not v_idb.ok else "PASS",
+                _fmt_user(v_idb, "alice"),
+                _fmt_user(v_idb, "carol"),
+                _fmt_user(v_idb, "bob"),
+                (
                     not v_idb.ok
                     and v_idb.user_outcomes["alice"]["executed_version"] == "legacy"
                     and v_idb.user_outcomes["carol"]["executed_version"] == "v2"
-                )
-                rows.append(CaseRow("Case B", "identity:alice set_off", "FAIL (carol v2)", "FAIL" if not v_idb.ok else "PASS", _fmt_user(v_idb, "alice"), _fmt_user(v_idb, "carol"), _fmt_user(v_idb, "bob"), idb_ok))
-            finally:
-                ops_identity.clear_identity_override_if_present(rehearsal_env, "checkout_v2", "alice", tok_id)
-
-            # Fix 1: segment:vip_users set_off -> PASS
-            ops.apply_operation(rehearsal_env, "checkout_v2", "segment:vip_users", "set_off", tok)
-            v_seg_off = _verify(cfg, rehearsal_url, "verify", rehearsal_state, {"checkout_v2": False, "cart_compat_reader": True})
-            rows.append(CaseRow("Case B", "segment:vip_users set_off", "PASS", "PASS" if v_seg_off.ok else "FAIL", _fmt_user(v_seg_off, "alice"), _fmt_user(v_seg_off, "carol"), _fmt_user(v_seg_off, "bob"), v_seg_off.ok))
-
-            # Fix 2: re-seed Case B -> segment:vip_users delete_override -> PASS
-            seed_case(ops, cfg, rehearsal_env, "b")
-            _reset_db(rehearsal_db, fixture_writes)
-            prep2 = _verify(cfg, rehearsal_url, "prepare", rehearsal_state)
-            assert prep2.ok, f"Case B (del) prepare failed: {prep2.summary}"
-            ops.apply_operation(rehearsal_env, "checkout_v2", "environment_default", "set_off", tok)
-            ops.apply_operation(rehearsal_env, "checkout_v2", "segment:vip_users", "delete_override", tok)
-            v_seg_del = _verify(cfg, rehearsal_url, "verify", rehearsal_state, {"checkout_v2": False, "cart_compat_reader": True})
-            rows.append(CaseRow("Case B", "segment:vip_users delete_override", "PASS", "PASS" if v_seg_del.ok else "FAIL", _fmt_user(v_seg_del, "alice"), _fmt_user(v_seg_del, "carol"), _fmt_user(v_seg_del, "bob"), v_seg_del.ok))
+                ),
+            ))
         finally:
-            _stop_shop(proc)
+            ops_identity.clear_identity_override_if_present(rehearsal_env, "checkout_v2", "alice", tok_cleanup)
 
-        # ------------------------------------------------------------------
-        # REFUSAL (APP_VARIANT=no_compat) on rehearsal
-        # ------------------------------------------------------------------
-        proc = None
-        try:
-            seed_case(ops, cfg, rehearsal_env, "refusal")
-            _reset_db(rehearsal_db, fixture_writes)
-            proc = _start_shop(cfg.app.rehearsal_port, rehearsal_db, rehearsal_key, app_variant="no_compat")
+        ops.apply_operation(rehearsal_env, "checkout_v2", "segment:vip_users", "set_off", tok)
+        v_seg_off = _verify(
+            cfg,
+            rehearsal_url,
+            "verify",
+            rehearsal_state,
+            next_journey_path("case_b_seg_off"),
+            {"checkout_v2": False, "cart_compat_reader": True},
+        )
+        record_or_fail(CaseRow(
+            "Case B",
+            "segment:vip_users set_off",
+            "PASS",
+            "PASS" if v_seg_off.ok else "FAIL",
+            _fmt_user(v_seg_off, "alice"),
+            _fmt_user(v_seg_off, "carol"),
+            _fmt_user(v_seg_off, "bob"),
+            v_seg_off.ok,
+        ))
+        fixture_writes.extend(_inspect_db_writes(rehearsal_db, "Case B (set_off)"))
 
-            prep = _verify(cfg, rehearsal_url, "prepare", rehearsal_state)
-            assert prep.ok, f"Refusal prepare failed: {prep.summary}"
+        seed_case(ops, cfg, rehearsal_env, "b")
+        _reset_db(rehearsal_db, "Case B (delete_override)", fixture_writes)
+        prep2 = _verify(cfg, rehearsal_url, "prepare", rehearsal_state, next_journey_path("case_b_del_prepare"))
+        assert prep2.ok, f"Case B (del) prepare failed: {prep2.summary}"
+        ops.apply_operation(rehearsal_env, "checkout_v2", "environment_default", "set_off", tok)
+        ops.apply_operation(rehearsal_env, "checkout_v2", "segment:vip_users", "delete_override", tok)
+        v_seg_del = _verify(
+            cfg,
+            rehearsal_url,
+            "verify",
+            rehearsal_state,
+            next_journey_path("case_b_seg_del"),
+            {"checkout_v2": False, "cart_compat_reader": True},
+        )
+        record_or_fail(CaseRow(
+            "Case B",
+            "segment:vip_users delete_override",
+            "PASS",
+            "PASS" if v_seg_del.ok else "FAIL",
+            _fmt_user(v_seg_del, "alice"),
+            _fmt_user(v_seg_del, "carol"),
+            _fmt_user(v_seg_del, "bob"),
+            v_seg_del.ok,
+        ))
+        fixture_writes.extend(_inspect_db_writes(rehearsal_db, "Case B (delete_override)"))
+    finally:
+        _stop_shop(proc)
 
-            tok = issue_token("rehearsal", rehearsal_env)
-            ops.apply_operation(rehearsal_env, "checkout_v2", "environment_default", "set_off", tok)
-            v_ref0 = _verify(cfg, rehearsal_url, "verify", rehearsal_state, {"checkout_v2": False})
-            rows.append(CaseRow("Refusal", "Rollback only (no_compat)", "FAIL (500)", "FAIL" if not v_ref0.ok else "PASS", _fmt_user(v_ref0, "alice"), _fmt_user(v_ref0, "carol"), _fmt_user(v_ref0, "bob"), not v_ref0.ok))
+    # ------------------------------------------------------------------
+    # REFUSAL (APP_VARIANT=no_compat) on rehearsal
+    # ------------------------------------------------------------------
+    proc = None
+    try:
+        seed_case(ops, cfg, rehearsal_env, "refusal")
+        _reset_db(rehearsal_db, "Refusal", fixture_writes)
+        proc = _start_shop(cfg.app.rehearsal_port, rehearsal_db, rehearsal_key, app_variant="no_compat")
 
-            # Exhaustively try every allowed non-harmful recovery op on refusal -> ALL MUST FAIL
-            ref_ops = [
-                ("cart_compat_reader", "environment_default", "set_on", {"checkout_v2": False, "cart_compat_reader": True}),
-                ("cart_compat_reader", "segment:vip_users", "set_on", {"checkout_v2": False, "cart_compat_reader": True}),
-                ("checkout_v2", "segment:vip_users", "set_off", {"checkout_v2": False}),
-                ("checkout_v2", "segment:vip_users", "delete_override", {"checkout_v2": False}),
-            ]
-            for flag_n, scope_n, op_n, exp_n in ref_ops:
-                ops.apply_operation(rehearsal_env, flag_n, scope_n, op_n, tok)
-                v_try = _verify(cfg, rehearsal_url, "verify", rehearsal_state, exp_n, eval_timeout=15.0)
-                ok_ref = (
+        prep = _verify(cfg, rehearsal_url, "prepare", rehearsal_state, next_journey_path("refusal_prepare"))
+        assert prep.ok, f"Refusal prepare failed: {prep.summary}"
+
+        tok = issue_token("rehearsal", rehearsal_env)
+        ops.apply_operation(rehearsal_env, "checkout_v2", "environment_default", "set_off", tok)
+        v_ref0 = _verify(
+            cfg,
+            rehearsal_url,
+            "verify",
+            rehearsal_state,
+            next_journey_path("refusal_rollback"),
+            {"checkout_v2": False},
+        )
+        record_or_fail(CaseRow(
+            "Refusal",
+            "Rollback only (no_compat)",
+            "FAIL (500)",
+            "FAIL" if not v_ref0.ok else "PASS",
+            _fmt_user(v_ref0, "alice"),
+            _fmt_user(v_ref0, "carol"),
+            _fmt_user(v_ref0, "bob"),
+            not v_ref0.ok,
+        ))
+
+        ref_ops = [
+            ("cart_compat_reader", "environment_default", "set_on", {"checkout_v2": False, "cart_compat_reader": True}),
+            ("cart_compat_reader", "segment:vip_users", "set_on", {"checkout_v2": False, "cart_compat_reader": True}),
+            ("checkout_v2", "segment:vip_users", "set_off", {"checkout_v2": False}),
+            ("checkout_v2", "segment:vip_users", "delete_override", {"checkout_v2": False}),
+        ]
+        for idx, (flag_n, scope_n, op_n, exp_n) in enumerate(ref_ops, start=1):
+            ops.apply_operation(rehearsal_env, flag_n, scope_n, op_n, tok)
+            v_try = _verify(
+                cfg,
+                rehearsal_url,
+                "verify",
+                rehearsal_state,
+                next_journey_path(f"refusal_op_{idx}"),
+                exp_n,
+                eval_timeout=15.0,
+            )
+            record_or_fail(CaseRow(
+                "Refusal",
+                f"{flag_n} {scope_n} {op_n}",
+                "FAIL (no_compat)",
+                "FAIL" if not v_try.ok else "PASS",
+                _fmt_user(v_try, "alice"),
+                _fmt_user(v_try, "carol"),
+                _fmt_user(v_try, "bob"),
+                (
                     not v_try.ok
                     and v_try.user_outcomes["alice"]["http_status"] == 500
                     and v_try.user_outcomes["carol"]["http_status"] == 500
-                )
-                rows.append(CaseRow("Refusal", f"{flag_n} {scope_n} {op_n}", "FAIL (no_compat)", "FAIL" if not v_try.ok else "PASS", _fmt_user(v_try, "alice"), _fmt_user(v_try, "carol"), _fmt_user(v_try, "bob"), ok_ref))
-        finally:
-            _stop_shop(proc)
+                ),
+            ))
+        fixture_writes.extend(_inspect_db_writes(rehearsal_db, "Refusal"))
+    finally:
+        _stop_shop(proc)
 
-        # Verify demo-target stayed untouched during rehearsal/refusal
-        target_snap_mid = take_snapshot(ops, cfg, target_env)
-        assert target_snap_mid.hash == target_snap_before.hash, "demo-target mutated before Target step!"
+    target_snap_mid = take_snapshot(ops, cfg, target_env)
+    assert target_snap_mid.hash == target_snap_before.hash, "demo-target mutated before Target step!"
 
-        # ------------------------------------------------------------------
-        # TARGET (Case A repeated on demo-target, port 8002, own DB)
-        # ------------------------------------------------------------------
-        proc = None
-        try:
-            seed_case(ops, cfg, target_env, "a")
-            target_flag_changes.append(f"[{target_env}] seed Case A: checkout_v2=ON, cart_compat_reader=OFF, vip_users override cleared")
-            _reset_db(target_db, fixture_writes)
-            proc = _start_shop(cfg.app.target_port, target_db, target_key)
+    # ------------------------------------------------------------------
+    # TARGET (Case A repeated on demo-target, port 8002, own DB)
+    # ------------------------------------------------------------------
+    proc = None
+    try:
+        seed_case(ops, cfg, target_env, "a")
+        target_flag_changes.append(f"[{target_env}] seed Case A: checkout_v2=ON, cart_compat_reader=OFF, overrides cleared")
+        _reset_db(target_db, "Target", fixture_writes)
+        proc = _start_shop(cfg.app.target_port, target_db, target_key)
 
-            prep_t = _verify(cfg, target_url, "prepare", target_state)
-            assert prep_t.ok, f"Target prepare failed: {prep_t.summary}"
+        prep_t = _verify(cfg, target_url, "prepare", target_state, next_journey_path("target_prepare"))
+        assert prep_t.ok, f"Target prepare failed: {prep_t.summary}"
 
-            tok_t = issue_token("target", target_env)
-            ops.apply_operation(target_env, "checkout_v2", "environment_default", "set_off", tok_t)
-            target_flag_changes.append(f"[{target_env}] apply: checkout_v2 environment_default set_off")
-            v_trb = _verify(cfg, target_url, "verify", target_state, {"checkout_v2": False})
-            t_rb_ok = (
+        tok_t = issue_token("target", target_env)
+        ops.apply_operation(target_env, "checkout_v2", "environment_default", "set_off", tok_t)
+        target_flag_changes.append(f"[{target_env}] apply: checkout_v2 environment_default set_off")
+        v_trb = _verify(
+            cfg,
+            target_url,
+            "verify",
+            target_state,
+            next_journey_path("target_rollback"),
+            {"checkout_v2": False},
+        )
+        record_or_fail(CaseRow(
+            "Target",
+            "Case A rollback only",
+            "FAIL (500 loud)",
+            "FAIL" if not v_trb.ok else "PASS",
+            _fmt_user(v_trb, "alice"),
+            _fmt_user(v_trb, "carol"),
+            _fmt_user(v_trb, "bob"),
+            (
                 not v_trb.ok
                 and v_trb.user_outcomes["alice"]["http_status"] == 500
                 and v_trb.user_outcomes["carol"]["http_status"] == 500
                 and v_trb.user_outcomes["bob"]["http_status"] == 200
-            )
-            rows.append(CaseRow("Target", "Case A rollback only", "FAIL (500 loud)", "FAIL" if not v_trb.ok else "PASS", _fmt_user(v_trb, "alice"), _fmt_user(v_trb, "carol"), _fmt_user(v_trb, "bob"), t_rb_ok))
+            ),
+        ))
 
-            ops.apply_operation(target_env, "cart_compat_reader", "environment_default", "set_on", tok_t)
-            target_flag_changes.append(f"[{target_env}] apply: cart_compat_reader environment_default set_on")
-            v_tfix = _verify(cfg, target_url, "verify", target_state, {"checkout_v2": False, "cart_compat_reader": True})
-            rows.append(CaseRow("Target", "compat environment_default set_on", "PASS", "PASS" if v_tfix.ok else "FAIL", _fmt_user(v_tfix, "alice"), _fmt_user(v_tfix, "carol"), _fmt_user(v_tfix, "bob"), v_tfix.ok))
-        finally:
-            _stop_shop(proc)
+        ops.apply_operation(target_env, "cart_compat_reader", "environment_default", "set_on", tok_t)
+        target_flag_changes.append(f"[{target_env}] apply: cart_compat_reader environment_default set_on")
+        v_tfix = _verify(
+            cfg,
+            target_url,
+            "verify",
+            target_state,
+            next_journey_path("target_fix"),
+            {"checkout_v2": False, "cart_compat_reader": True},
+        )
+        record_or_fail(CaseRow(
+            "Target",
+            "compat environment_default set_on",
+            "PASS",
+            "PASS" if v_tfix.ok else "FAIL",
+            _fmt_user(v_tfix, "alice"),
+            _fmt_user(v_tfix, "carol"),
+            _fmt_user(v_tfix, "bob"),
+            v_tfix.ok,
+        ))
+        fixture_writes.extend(_inspect_db_writes(target_db, "Target"))
+    finally:
+        _stop_shop(proc)
+
+    summary_path = _flush_evidence(
+        out_dir,
+        rows,
+        target_flag_changes,
+        fixture_writes,
+        [("ops", ops), ("ops_identity", ops_identity)],
+        status="PASS",
+    )
 
     print("\n| Scenario | Action | Expected | Observed | alice | carol | bob | Check |")
     print("|---|---|---|---|---|---|---|---|")
@@ -345,13 +639,13 @@ def main() -> int:
     for item in target_flag_changes:
         print(f"- {item}")
 
-    print("\nFixture writes:")
+    print("\nFixture & DB writes:")
     for fw in fixture_writes:
         print(f"- {fw}")
 
-    all_passed = all(r.passed for r in rows)
-    print(f"\nSTEP9_OVERALL: {'PASS' if all_passed else 'FAIL'} ({sum(r.passed for r in rows)}/{len(rows)} assertions)")
-    return 0 if all_passed else 1
+    print(f"\nRedacted E2E evidence retained in: {summary_path}")
+    print(f"STEP9_OVERALL: PASS ({len(rows)}/{len(rows)} assertions)")
+    return 0
 
 
 if __name__ == "__main__":

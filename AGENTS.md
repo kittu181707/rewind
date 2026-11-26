@@ -116,14 +116,14 @@ Known model trap: models propose `identity:<user>` overrides because the user is
 
 All cases use three users: **alice** and **carol** (`is_vip=true`) are the affected users; **bob** is the control (not VIP). Every journey must cover all three, so an identity-only patch fails verification.
 
-Journey phases (the orchestrator calls them): `prepare` (customers use v2 and save cart changes), then Rewind applies the rollback (`checkout_v2` default OFF), then `verify`.
+Journey phases (the orchestrator calls them): `prepare` (affected customers save v2 cart changes; control user bob keeps his baseline v1 cart), then Rewind applies the rollback (`checkout_v2` default OFF), then `verify`.
 
 The locked core set is **Case A**, **Case B**, and **Refusal**.
 
 | | Case A (loud) | Case B (silent) | Refusal |
 |---|---|---|---|
 | Baseline | `checkout_v2` default ON; `cart_compat_reader` OFF; no overrides | `checkout_v2` default ON; segment override ON for `vip_users`; `cart_compat_reader` ON | demo-shop variant where legacy has **no** compat-reader code; reader flag cannot help |
-| Prepare | all three users save carts in v2 format | same | same as A |
+| Prepare | alice and carol (affected) save carts in v2 format; bob (control) keeps v1 baseline cart | same | same as A |
 | Rollback | `checkout_v2` default OFF | `checkout_v2` default OFF | same as A |
 | Failure signature | alice and carol get HTTP 500 "Unrecognized cart schema"; bob fine | **no error**: alice and carol still execute v2 (HTTP 200), bob executes legacy | HTTP 500 for alice and carol |
 | Right fix | `cart_compat_reader`: environment_default, set_on | `checkout_v2`: segment:vip_users, set_off **or** delete_override | none exists |

@@ -31,6 +31,9 @@ class CommandRecord:
 
 RunnerFn = Callable[[list[str], dict[str, str]], subprocess.CompletedProcess[str]]
 
+SETUP_PHASES = frozenset({"seed", "cleanup"})
+SECRET_FIELD_TERMS = ("key", "token", "secret", "password", "credential", "auth")
+
 
 def _default_runner(args: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -93,15 +96,31 @@ class FlagsmithOps:
         proc = self._runner(cmd, env)
         duration_ms = round((time.perf_counter() - started) * 1000, 3)
 
+        raw_stdout = proc.stdout or ""
+        raw_stderr = proc.stderr or ""
+        parsed_json: Any = None
+        json_err: json.JSONDecodeError | None = None
+
+        wants_json = "--json" in cli_args
+        looks_json = raw_stdout.lstrip().startswith(("{", "["))
+        if raw_stdout.strip() and (wants_json or looks_json):
+            try:
+                parsed_json = json.loads(raw_stdout)
+                self._learn_json_secrets(parsed_json)
+            except json.JSONDecodeError as exc:
+                if wants_json and proc.returncode == 0:
+                    json_err = exc
+
+        # Redact only after harvesting any newly returned JSON secrets.
         display_cmd = self.redact(" ".join(["flagsmith", *cli_args]))
-        stdout_redacted = self.redact(proc.stdout or "")
-        stderr_redacted = self.redact(proc.stderr or "")
+        stdout_redacted = self.redact(raw_stdout).strip()
+        stderr_redacted = self.redact(raw_stderr).strip()
         record = CommandRecord(
             command=display_cmd,
             exit_code=proc.returncode,
             duration_ms=duration_ms,
-            stdout=stdout_redacted.strip(),
-            stderr=stderr_redacted.strip(),
+            stdout=stdout_redacted,
+            stderr=stderr_redacted,
         )
         self.command_log.append(record)
 
@@ -109,25 +128,35 @@ class FlagsmithOps:
             detail = record.stderr or record.stdout or f"exit code {proc.returncode}"
             raise FlagsmithOpsError(f"CLI command failed ({display_cmd}): {detail}")
 
-        parsed: Any = record.stdout
-        if "--json" in cli_args and proc.returncode == 0 and record.stdout:
-            try:
-                parsed = json.loads(proc.stdout)
-                self._learn_json_secrets(parsed)
-            except json.JSONDecodeError as exc:
-                raise FlagsmithOpsError(f"Expected JSON from {display_cmd}: {exc}") from exc
-        return parsed, record
+        if json_err is not None:
+            raise FlagsmithOpsError(f"Expected JSON from {display_cmd}: {json_err}")
+
+        if parsed_json is not None and wants_json and proc.returncode == 0:
+            return parsed_json, record
+        return record.stdout, record
 
     def _learn_json_secrets(self, payload: Any) -> None:
         if isinstance(payload, dict):
             for k, v in payload.items():
-                if isinstance(v, str) and any(t in k.lower() for t in ("key", "token", "secret")):
+                if isinstance(v, str) and any(t in k.lower() for t in SECRET_FIELD_TERMS):
                     self.register_secret(v)
                 else:
                     self._learn_json_secrets(v)
         elif isinstance(payload, list):
             for item in payload:
                 self._learn_json_secrets(item)
+
+    def _require_setup_authority(self, environment: str, approval: ApprovalToken | None) -> None:
+        if not isinstance(approval, ApprovalToken):
+            raise FlagsmithOpsError("Explicit setup/cleanup ApprovalToken is required")
+        if approval.phase not in SETUP_PHASES:
+            raise FlagsmithOpsError(
+                f"Setup/cleanup authority requires phase in {sorted(SETUP_PHASES)}, got {approval.phase!r}"
+            )
+        if environment != "project" and approval.environment != environment:
+            raise FlagsmithOpsError(
+                f"Setup/cleanup ApprovalToken environment mismatch: {approval.environment!r} != {environment!r}"
+            )
 
     def list_environments(self) -> list[dict[str, Any]]:
         data, _ = self._run_cli(["environment", "list", "--json"])
@@ -156,6 +185,19 @@ class FlagsmithOps:
             raise FlagsmithOpsError(f"Flag {flag!r} is not in allowed.flags")
         env_key = self._resolve_env_key(environment)
         args = ["flag", "get", flag, "--segment", segment, "--environment", env_key, "--json"]
+        data, record = self._run_cli(args, check=False)
+        if record.exit_code != 0:
+            lowered = (record.stderr + " " + record.stdout).lower()
+            if "not found" in lowered or "no override" in lowered or "404" in lowered:
+                return None
+            raise FlagsmithOpsError(f"CLI command failed ({record.command}): {record.stderr or record.stdout}")
+        return data
+
+    def get_identity_override(self, environment: str, flag: str, identifier: str) -> dict[str, Any] | None:
+        if flag not in self.config.allowed.flags:
+            raise FlagsmithOpsError(f"Flag {flag!r} is not in allowed.flags")
+        env_key = self._resolve_env_key(environment)
+        args = ["flag", "get", flag, "--identifier", identifier, "--environment", env_key, "--json"]
         data, record = self._run_cli(args, check=False)
         if record.exit_code != 0:
             lowered = (record.stderr + " " + record.stdout).lower()
@@ -216,8 +258,7 @@ class FlagsmithOps:
         approval: ApprovalToken | None,
         description: str = "",
     ) -> CommandRecord:
-        if not isinstance(approval, ApprovalToken) or approval.phase != "seed":
-            raise FlagsmithOpsError("Seed ApprovalToken is required to create a segment")
+        self._require_setup_authority("project", approval)
         args = ["segment", "create", name, "--rules", f"@{rules_file}"]
         if description:
             args.extend(["--description", description])
@@ -225,8 +266,7 @@ class FlagsmithOps:
         return record
 
     def delete_segment(self, name: str, approval: ApprovalToken | None) -> CommandRecord:
-        if not isinstance(approval, ApprovalToken) or approval.phase != "seed":
-            raise FlagsmithOpsError("Seed ApprovalToken is required to delete a segment")
+        self._require_setup_authority("project", approval)
         _, record = self._run_cli(["segment", "delete", name, "--yes"])
         return record
 
@@ -237,8 +277,8 @@ class FlagsmithOps:
         segment: str,
         approval: ApprovalToken | None,
     ) -> bool:
-        if not isinstance(approval, ApprovalToken) or approval.environment != environment:
-            raise FlagsmithOpsError(f"Valid ApprovalToken for {environment!r} is required")
+        self._require_setup_authority(environment, approval)
+        self.validate_operation(environment, flag, f"segment:{segment}", "delete_override")
         if self.get_segment_override(environment, flag, segment) is None:
             return False
         self.apply_operation(environment, flag, f"segment:{segment}", "delete_override", approval)
@@ -251,14 +291,20 @@ class FlagsmithOps:
         identifier: str,
         approval: ApprovalToken | None,
     ) -> bool:
-        if not isinstance(approval, ApprovalToken) or approval.environment != environment:
-            raise FlagsmithOpsError(f"Valid ApprovalToken for {environment!r} is required")
+        """Setup/cleanup-only helper to remove stale overrides for configured test users."""
+        self._require_setup_authority(environment, approval)
+        if environment not in self.config.allowed_environments():
+            raise FlagsmithOpsError(f"Environment {environment!r} is not in allowlist")
+        if flag not in self.config.allowed.flags:
+            raise FlagsmithOpsError(f"Flag {flag!r} is not in allowed.flags")
+        if "delete_override" not in self.config.allowed.operations:
+            raise FlagsmithOpsError("Operation 'delete_override' is not in allowed.operations")
+        configured_users = {u.id for u in self.config.users}
+        if identifier not in configured_users:
+            raise FlagsmithOpsError(f"Identifier {identifier!r} is not a configured user")
+
         env_key = self._resolve_env_key(environment)
-        _, rec = self._run_cli(
-            ["flag", "get", flag, "--identifier", identifier, "--environment", env_key, "--json"],
-            check=False,
-        )
-        if rec.exit_code != 0:
+        if self.get_identity_override(environment, flag, identifier) is None:
             return False
         self._run_cli(["flag", "delete", flag, "--identifier", identifier, "--environment", env_key, "--yes"])
         return True

@@ -9,7 +9,6 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Callable
 
 import requests
@@ -23,6 +22,8 @@ class VerifierError(RuntimeError):
 
 RunnerFn = Callable[[list[str], dict[str, str], float], subprocess.CompletedProcess[str]]
 PostFn = Callable[[str, dict[str, Any]], tuple[int, dict[str, Any]]]
+
+EVAL_STEP_NAMES = frozenset({"eval_verify", "eval_prepare", "eval_convergence"})
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,18 @@ def _default_post(url: str, payload: dict[str, Any]) -> tuple[int, dict[str, Any
     return resp.status_code, body
 
 
+def _has_exact_bool_flags(eff: Any, expected_flags: dict[str, bool]) -> bool:
+    if not isinstance(eff, dict):
+        return False
+    for flag_name, want in expected_flags.items():
+        if flag_name not in eff:
+            return False
+        val = eff[flag_name]
+        if not isinstance(val, bool) or val is not bool(want):
+            return False
+    return True
+
+
 def poll_eval_convergence(
     base_url: str,
     users: list[Any],
@@ -112,15 +125,10 @@ def poll_eval_convergence(
                 round_results[uid] = {"http_status": 0, "error": str(exc)}
                 continue
 
-            round_results[uid] = {"http_status": status, **body}
+            round_results[uid] = {"http_status": status, **(body if isinstance(body, dict) else {})}
             eff = body.get("effective_flags") if isinstance(body, dict) else None
-            if status != 200 or not isinstance(eff, dict):
+            if status != 200 or not _has_exact_bool_flags(eff, expected_flags):
                 round_match = False
-                continue
-
-            for flag_name, want in expected_flags.items():
-                if bool(eff.get(flag_name)) != bool(want):
-                    round_match = False
 
         last_eval = round_results
         if round_match:
@@ -163,8 +171,8 @@ def parse_journey_output(stdout: str) -> dict[str, Any]:
     if "ok" not in parsed or not isinstance(parsed["ok"], bool):
         raise VerifierError("Journey JSON missing boolean 'ok' field")
     steps = parsed.get("steps")
-    if not isinstance(steps, list):
-        raise VerifierError("Journey JSON missing 'steps' list")
+    if not isinstance(steps, list) or not all(isinstance(s, dict) for s in steps):
+        raise VerifierError("Journey JSON 'steps' must be a list of objects")
     return parsed
 
 
@@ -242,15 +250,21 @@ def verify_journey(
     steps = list(parsed["steps"])
     failed_assertions: list[dict[str, Any]] = []
     user_outcomes: dict[str, dict[str, Any]] = {}
+    checkout_users: set[str] = set()
+    action_users: set[str] = set()
+
     goal_flag = config.rollback.flag
     goal_bool = config.rollback.to == "on"
+    goal_version = "v2" if goal_bool else "legacy"
 
     for step in steps:
         uid = str(step.get("user", "unknown"))
         eff = step.get("effective_flags")
         exec_ver = step.get("executed_version")
-        http_status = int(step.get("http_status", 0))
+        raw_status = step.get("http_status", 0)
+        http_status = raw_status if isinstance(raw_status, int) else 0
         step_name = str(step.get("name", "unknown"))
+        is_eval_step = step_name in EVAL_STEP_NAMES
 
         user_outcomes[uid] = {
             "step": step_name,
@@ -259,34 +273,105 @@ def verify_journey(
             "effective_flags": eff if isinstance(eff, dict) else {},
         }
 
-        if phase == "verify" and step_name not in {"eval_verify", "eval_prepare", "eval_convergence"}:
-            if not isinstance(eff, dict) or goal_flag not in eff:
+        if not is_eval_step:
+            action_users.add(uid)
+        if step_name == "checkout":
+            checkout_users.add(uid)
+
+        # Direct structural checks on verify action/eval steps regardless of journey self-assertions
+        if phase == "verify":
+            if http_status != 200:
                 failed_assertions.append(
                     {
                         "user": uid,
                         "step": step_name,
-                        "assertion": "effective_flags_present_in_action",
-                        "detail": f"Missing {goal_flag!r} in response effective_flags={eff!r}",
+                        "assertion": "direct_http_status_200",
+                        "detail": f"Expected HTTP 200, got {http_status}",
                         "http_status": http_status,
                         "executed_version": exec_ver,
                         "effective_flags": eff if isinstance(eff, dict) else {},
                     }
                 )
-            elif bool(eff.get(goal_flag)) != goal_bool:
+
+            if not isinstance(eff, dict) or goal_flag not in eff or not isinstance(eff[goal_flag], bool):
+                failed_assertions.append(
+                    {
+                        "user": uid,
+                        "step": step_name,
+                        "assertion": "effective_flags_present_in_response",
+                        "detail": f"Missing or non-boolean {goal_flag!r} in effective_flags={eff!r}",
+                        "http_status": http_status,
+                        "executed_version": exec_ver,
+                        "effective_flags": eff if isinstance(eff, dict) else {},
+                    }
+                )
+            elif eff[goal_flag] is not goal_bool:
                 failed_assertions.append(
                     {
                         "user": uid,
                         "step": step_name,
                         "assertion": "rollback_flag_matches_goal",
-                        "detail": f"Expected {goal_flag}={goal_bool}, got {eff.get(goal_flag)}",
+                        "detail": f"Expected {goal_flag}={goal_bool}, got {eff[goal_flag]}",
+                        "http_status": http_status,
+                        "executed_version": exec_ver,
+                        "effective_flags": eff,
+                    }
+                )
+            elif not is_eval_step and eff[goal_flag] is not (exec_ver == "v2"):
+                failed_assertions.append(
+                    {
+                        "user": uid,
+                        "step": step_name,
+                        "assertion": "effective_flags_match_executed_version",
+                        "detail": f"{goal_flag}={eff[goal_flag]} conflicts with executed_version={exec_ver!r}",
                         "http_status": http_status,
                         "executed_version": exec_ver,
                         "effective_flags": eff,
                     }
                 )
 
-        for assertion in step.get("assertions", []):
-            if not assertion.get("pass", False):
+            if not is_eval_step and exec_ver != goal_version:
+                failed_assertions.append(
+                    {
+                        "user": uid,
+                        "step": step_name,
+                        "assertion": "direct_executed_version_matches_goal",
+                        "detail": f"Expected executed_version={goal_version!r}, got {exec_ver!r}",
+                        "http_status": http_status,
+                        "executed_version": exec_ver,
+                        "effective_flags": eff if isinstance(eff, dict) else {},
+                    }
+                )
+
+        raw_assertions = step.get("assertions")
+        if not isinstance(raw_assertions, list) or len(raw_assertions) == 0:
+            failed_assertions.append(
+                {
+                    "user": uid,
+                    "step": step_name,
+                    "assertion": "non_empty_step_assertions",
+                    "detail": f"Step {step_name!r} has missing or empty assertions",
+                    "http_status": http_status,
+                    "executed_version": exec_ver,
+                    "effective_flags": eff if isinstance(eff, dict) else {},
+                }
+            )
+            continue
+
+        for assertion in raw_assertions:
+            if not isinstance(assertion, dict) or not isinstance(assertion.get("pass"), bool):
+                failed_assertions.append(
+                    {
+                        "user": uid,
+                        "step": step_name,
+                        "assertion": "valid_assertion_shape",
+                        "detail": f"Malformed assertion entry: {assertion!r}",
+                        "http_status": http_status,
+                        "executed_version": exec_ver,
+                        "effective_flags": eff if isinstance(eff, dict) else {},
+                    }
+                )
+            elif not assertion["pass"]:
                 failed_assertions.append(
                     {
                         "user": uid,
@@ -314,6 +399,35 @@ def verify_journey(
                 "effective_flags": {},
             }
         )
+
+    if phase == "verify":
+        missing_checkout = sorted(configured_users - checkout_users)
+        if missing_checkout:
+            failed_assertions.append(
+                {
+                    "user": ",".join(missing_checkout),
+                    "step": "coverage",
+                    "assertion": "all_users_checked_out",
+                    "detail": f"Missing checkout step for: {missing_checkout}",
+                    "http_status": 0,
+                    "executed_version": "none",
+                    "effective_flags": {},
+                }
+            )
+    elif phase == "prepare":
+        missing_actions = sorted(configured_users - action_users)
+        if missing_actions:
+            failed_assertions.append(
+                {
+                    "user": ",".join(missing_actions),
+                    "step": "coverage",
+                    "assertion": "all_users_prepared",
+                    "detail": f"Missing prepare action step for: {missing_actions}",
+                    "http_status": 0,
+                    "executed_version": "none",
+                    "effective_flags": {},
+                }
+            )
 
     conv_ok = True if convergence is None else convergence.converged
     overall_ok = (

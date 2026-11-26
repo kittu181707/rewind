@@ -1,4 +1,4 @@
-"""Unit tests for rewind.verifier with passing, failing, and convergence fixtures."""
+"""Unit tests for rewind.verifier with passing, failing, convergence, and hardening fixtures."""
 
 from __future__ import annotations
 
@@ -101,14 +101,13 @@ def test_verify_journey_loud_500_fixture() -> None:
     )
     assert res.ok is False
     assert res.exit_code == 1
-    assert len(res.failed_assertions) == 2
-    assert {f["user"] for f in res.failed_assertions} == {"alice", "carol"}
+    assert any(f["user"] == "alice" for f in res.failed_assertions)
+    assert any(f["user"] == "carol" for f in res.failed_assertions)
     assert res.user_outcomes["bob"]["http_status"] == 200
 
 
 def test_verify_journey_silent_v2_and_identity_patch_rejected() -> None:
     cfg = _load_demo_config()
-    # Simulates identity:alice fixed, carol still silently on v2 despite HTTP 200
     payload = {
         "ok": False,
         "phase": "verify",
@@ -178,6 +177,120 @@ def test_verify_catches_missing_user_even_if_journey_claims_ok() -> None:
     assert any(f["assertion"] == "all_configured_users_covered" for f in res.failed_assertions)
 
 
+def test_verify_rejects_500_v2_when_assertions_omitted_and_ok_true() -> None:
+    cfg = _load_demo_config()
+    payload = {
+        "ok": True,
+        "phase": "verify",
+        "steps": [
+            {
+                "name": "checkout",
+                "user": uid,
+                "http_status": 500,
+                "executed_version": "v2",
+                "effective_flags": {"checkout_v2": False},
+            }
+            for uid in ("alice", "carol", "bob")
+        ],
+    }
+    res = verify_journey(
+        cfg,
+        base_url="http://127.0.0.1:8001",
+        phase="verify",
+        runner=lambda cmd, env, timeout: _completed(0, json.dumps(payload)),
+    )
+    assert res.ok is False
+    assertions = {f["assertion"] for f in res.failed_assertions}
+    assert "direct_http_status_200" in assertions
+    assert "direct_executed_version_matches_goal" in assertions
+    assert "effective_flags_match_executed_version" in assertions
+    assert "non_empty_step_assertions" in assertions
+
+
+def test_verify_rejects_eval_only_evidence_without_checkout() -> None:
+    cfg = _load_demo_config()
+    payload = {
+        "ok": True,
+        "phase": "verify",
+        "steps": [
+            {
+                "name": "eval_verify",
+                "user": uid,
+                "http_status": 200,
+                "executed_version": "legacy",
+                "effective_flags": {"checkout_v2": False, "cart_compat_reader": True},
+                "assertions": [{"name": "eval_converged_3x", "pass": True, "detail": "ok"}],
+            }
+            for uid in ("alice", "carol", "bob")
+        ],
+    }
+    res = verify_journey(
+        cfg,
+        base_url="http://127.0.0.1:8001",
+        phase="verify",
+        runner=lambda cmd, env, timeout: _completed(0, json.dumps(payload)),
+    )
+    assert res.ok is False
+    assert any(f["assertion"] == "all_users_checked_out" for f in res.failed_assertions)
+
+
+def test_verify_rejects_empty_assertions_even_on_http_200() -> None:
+    cfg = _load_demo_config()
+    payload = {
+        "ok": True,
+        "phase": "verify",
+        "steps": [
+            {
+                "name": "checkout",
+                "user": uid,
+                "http_status": 200,
+                "executed_version": "legacy",
+                "effective_flags": {"checkout_v2": False, "cart_compat_reader": True},
+                "assertions": [],
+            }
+            for uid in ("alice", "carol", "bob")
+        ],
+    }
+    res = verify_journey(
+        cfg,
+        base_url="http://127.0.0.1:8001",
+        phase="verify",
+        runner=lambda cmd, env, timeout: _completed(0, json.dumps(payload)),
+    )
+    assert res.ok is False
+    assert any(f["assertion"] == "non_empty_step_assertions" for f in res.failed_assertions)
+
+
+def test_poll_eval_convergence_rejects_missing_or_non_bool_flag_for_off() -> None:
+    cfg = _load_demo_config()
+
+    def missing_flag_post(url: str, body: dict):
+        return 200, {"ok": True, "user_id": body["user_id"], "effective_flags": {"cart_compat_reader": True}}
+
+    conv_missing = poll_eval_convergence(
+        base_url="http://127.0.0.1:8001",
+        users=cfg.users,
+        expected_flags={"checkout_v2": False},
+        timeout_s=0.05,
+        interval_s=0.0,
+        post_fn=missing_flag_post,
+    )
+    assert conv_missing.converged is False
+
+    def non_bool_post(url: str, body: dict):
+        return 200, {"ok": True, "user_id": body["user_id"], "effective_flags": {"checkout_v2": 0}}
+
+    conv_non_bool = poll_eval_convergence(
+        base_url="http://127.0.0.1:8001",
+        users=cfg.users,
+        expected_flags={"checkout_v2": False},
+        timeout_s=0.05,
+        interval_s=0.0,
+        post_fn=non_bool_post,
+    )
+    assert conv_non_bool.converged is False
+
+
 def test_parse_journey_output_rejects_malformed() -> None:
     try:
         parse_journey_output("not-json")
@@ -188,9 +301,8 @@ def test_parse_journey_output_rejects_malformed() -> None:
 
 def test_poll_eval_convergence_requires_three_consecutive_matches() -> None:
     cfg = _load_demo_config()
-    # Sequence of rounds: 2 matching, 1 flapping, then 3 consecutive matching -> 6 rounds
     flap_rounds = [False, False, True, False, False, False]
-    call_idx = {"round": 0, "user_calls": 0}
+    call_idx = {"user_calls": 0}
 
     def fake_post(url: str, body: dict):
         round_idx = call_idx["user_calls"] // 3

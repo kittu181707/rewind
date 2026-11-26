@@ -42,8 +42,16 @@ class ScriptedModel:
 
     def complete(self, messages, tools):
         assert "scripted (validation harness)" not in json.dumps([messages, tools])
-        self.requests.append(json.loads(messages[1]["content"]))
         self.calls.append(LLMCall("fixture-provider", "fixture-model", 1.0, 5, 3, "ok", 200))
+        if len(messages) == 2:
+            self.requests.append(json.loads(messages[1]["content"]))
+            return {"role": "assistant", "tool_calls": [
+                {"id": name, "type": "function", "function": {"name": name, "arguments": json.dumps(arguments)}}
+                for name, arguments in (("read_evidence", {}), ("read_flag_state", {}), ("read_source", {"path": "source:1"}))
+            ]}
+        evidence = json.loads(next(message["content"] for message in messages if message.get("tool_call_id") == "read_evidence"))["data"]
+        assert set(evidence) == {"summary", "user_outcomes", "failed_assertions"}
+        assert set(evidence["user_outcomes"]["alice"]) == {"status", "executed_version", "effective_flags"}
         return next(self.replies)
 
 
@@ -164,6 +172,9 @@ class DemoFixtures:
 @pytest.fixture
 def workflow(tmp_path, monkeypatch):
     config = load_config(ROOT / "examples/demo-shop/rewind.config.yaml")
+    source = tmp_path / config.source_paths[0]
+    source.parent.mkdir(parents=True)
+    source.write_text("# Synthetic app source\n", encoding="utf-8")
     keys = {REHEARSAL: "fixture-rehearsal-key", TARGET: "fixture-target-key"}
     monkeypatch.setenv(config.flagsmith.rehearsal.key_env, keys[REHEARSAL])
     monkeypatch.setenv(config.flagsmith.target.key_env, keys[TARGET])

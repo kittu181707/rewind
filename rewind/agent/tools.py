@@ -18,10 +18,16 @@ from rewind.flagsmith_ops import FlagsmithOpsError
 MAX_READ_CALLS = 6
 MAX_SOURCE_BYTES = 128 * 1024
 MAX_SOURCE_CHARS = 4_500
+REQUIRED_READS = frozenset({"read_evidence", "read_flag_state", "read_source"})
+READ_FIRST = "Read evidence, flag state and source first"
 
 
 class ToolError(ValueError):
     """An invalid read request or terminal model action."""
+
+
+class _ReadsRequired(ToolError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -92,11 +98,14 @@ class AttemptTools:
         self._root = source_root.resolve()
         self._sources = {f"source:{index}": value for index, value in enumerate(config.source_paths, 1)}
         self._flags = frozenset(config.allowed.flags)
+        self.task = {"rollback_applied": f"{config.rollback.flag} was set to {config.rollback.to}",
+                     "goal": config.rollback.goal}
         self._validate = validate
         self._redact = redact
         self._flag_state = self.scrub(flag_state)
         self._evidence = self.scrub(evidence)
         self._reads = 0
+        self._completed_reads: set[str] = set()
         self._proposed = False
         self.schemas = [
             _function("read_source", "Read one allowlisted application source path by its listed alias.", {"path": _text_enum(list(self._sources))}),
@@ -127,12 +136,15 @@ class AttemptTools:
             raise ToolError("Read budget exhausted (maximum six calls)")
         self._reads += 1
         if name == "read_source" and set(arguments) == {"path"} and isinstance(arguments["path"], str):
-            return self.read_source(arguments["path"])
-        if name == "read_flag_state" and not arguments:
-            return self._flag_state
-        if name == "read_evidence" and not arguments:
-            return self._evidence
-        raise ToolError("Unknown read tool or invalid arguments")
+            result = self.read_source(arguments["path"])
+        elif name == "read_flag_state" and not arguments:
+            result = self._flag_state
+        elif name == "read_evidence" and not arguments:
+            result = self._evidence
+        else:
+            raise ToolError("Unknown read tool or invalid arguments")
+        self._completed_reads.add(name)
+        return result
 
     def read_source(self, path: str) -> str:
         raw = self._sources.get(path, path)
@@ -156,6 +168,8 @@ class AttemptTools:
     def propose(self, arguments: dict[str, Any]) -> Proposal:
         if self._proposed:
             raise ToolError("Only one proposal is allowed per attempt")
+        if not REQUIRED_READS <= self._completed_reads:
+            raise _ReadsRequired(READ_FIRST)
         self._proposed = True
         fields = ("diagnosis", "flag", "scope", "operation")
         if set(arguments) != set(fields) or any(not isinstance(arguments[k], str) or not arguments[k].strip() for k in fields):
@@ -212,10 +226,13 @@ def _no_fix_reason(content: Any) -> str | None:
 def run_attempt(model: ChatModel, tools: AttemptTools, previous: list[dict[str, Any]]) -> AttemptResult:
     messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": json.dumps({
         "task": "Diagnose this rollback using the available read tools, then make one terminal decision.",
+        **tools.scrub(tools.task),
+        "constraint": "A proposal that moves any user away from the goal is wrong.",
         "previous_attempts": tools.scrub(previous),
-    })}]
+    }, separators=(",", ":"))}]
     audit: list[dict[str, Any]] = []
-    for _ in range(MAX_READ_CALLS + 1):
+    reminded = False
+    for _ in range(MAX_READ_CALLS + 2):
         raw = model.complete(messages, tools.schemas)
         calls = raw.get("tool_calls")
         content = raw.get("content")
@@ -237,7 +254,17 @@ def run_attempt(model: ChatModel, tools: AttemptTools, previous: list[dict[str, 
             if any(name == "propose_operation" for _, name, _ in parsed):
                 if len(parsed) != 1:
                     raise ToolError("A proposal must be the only call in its response")
-                proposal = tools.propose(parsed[0][2])
+                tool_id, name, arguments = parsed[0]
+                try:
+                    proposal = tools.propose(arguments)
+                except _ReadsRequired:
+                    if reminded:
+                        raise
+                    reminded = True
+                    messages.extend([assistant, {"role": "tool", "tool_call_id": tool_id,
+                        "content": json.dumps({"ok": False, "error": READ_FIRST})}])
+                    audit.append({"role": "tool", "name": name, "ok": False, "error": READ_FIRST})
+                    continue
                 return AttemptResult("proposed", proposal.diagnosis, proposal, audit)
             if len(parsed) > tools.reads_remaining:
                 raise ToolError("Read budget exhausted (maximum six calls)")
@@ -247,7 +274,8 @@ def run_attempt(model: ChatModel, tools: AttemptTools, previous: list[dict[str, 
                     result = {"ok": True, "data": tools.read(name, arguments)}
                 except ToolError as exc:
                     result = {"ok": False, "error": str(exc)}
-                messages.append({"role": "tool", "tool_call_id": tool_id, "content": json.dumps(result)})
+                messages.append({"role": "tool", "tool_call_id": tool_id,
+                                 "content": json.dumps(result, separators=(",", ":"))})
                 audit.append({"role": "tool", "name": tools.scrub(name), "ok": result["ok"], **(
                     {"error": result["error"]} if not result["ok"] else {}
                 )})

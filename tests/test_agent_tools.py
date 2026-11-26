@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from rewind.agent.tools import AttemptTools, ToolError, run_attempt
+from rewind.agent.tools import AttemptTools, READ_FIRST, ToolError, _source_excerpt, run_attempt
 from rewind.config import load_config
 from rewind.flagsmith_ops import FlagsmithOps
 
@@ -32,6 +32,14 @@ def reply(*calls):
     ]}
 
 
+READS = (("read_source", {"path": "source:1"}), ("read_evidence", {}), ("read_flag_state", {}))
+
+
+def proposal_reply():
+    return reply(("propose_operation", {"diagnosis": "Legacy rejects the saved format without a compatible reader.",
+        "flag": "cart_compat_reader", "scope": "environment_default", "operation": "set_on"}))
+
+
 @pytest.fixture
 def tool_set(tmp_path):
     cfg = load_config(ROOT / "examples/demo-shop/rewind.config.yaml")
@@ -44,11 +52,7 @@ def tool_set(tmp_path):
 
 
 def test_read_only_tools_and_one_terminal_proposal(tool_set):
-    model = ScriptedModel(
-        reply(("read_source", {"path": "source:1"}), ("read_evidence", {})),
-        reply(("propose_operation", {"diagnosis": "Legacy rejects the saved format without its compatibility reader.",
-                                       "flag": "cart_compat_reader", "scope": "environment_default", "operation": "set_on"})),
-    )
+    model = ScriptedModel(reply(*READS), proposal_reply())
     result = run_attempt(model, tool_set, [])
     assert result.status == "proposed" and result.proposal is not None
     assert result.proposal.operation_tuple == ("cart_compat_reader", "environment_default", "set_on")
@@ -58,6 +62,10 @@ def test_read_only_tools_and_one_terminal_proposal(tool_set):
     assert "fixture shop source" in json.dumps(model.requests[1][0])
     assert "fixture shop source" not in json.dumps(result.messages)
     assert "journey.py" not in json.dumps(model.requests[0])
+    task = json.loads(model.requests[0][0][1]["content"])
+    assert task["rollback_applied"] == "checkout_v2 was set to off"
+    assert task["goal"] == load_config(ROOT / "examples/demo-shop/rewind.config.yaml").rollback.goal
+    assert task["constraint"] == "A proposal that moves any user away from the goal is wrong."
 
 
 @pytest.mark.parametrize("path", ["../shop.py", ".env", "journey.py", "verifier.py", "tests/fixture.py", "link.py"])
@@ -75,11 +83,36 @@ def test_rejects_seventh_read_request(tool_set):
 
 
 def test_proposal_requires_diagnosis_and_applies_allowlist(tool_set):
+    for name, arguments in READS:
+        tool_set.read(name, arguments)
     fields = {"flag": "cart_compat_reader", "scope": "identity:alice", "operation": "set_on"}
     with pytest.raises(ToolError, match="requires diagnosis"):
         tool_set.propose(fields)
     with pytest.raises(ToolError, match="Only one proposal"):
         tool_set.propose({**fields, "diagnosis": "A masked failure."})
+
+
+def test_premature_proposal_allows_one_correction_and_all_six_reads(tool_set):
+    model = ScriptedModel(proposal_reply(), reply(*READS, *READS), proposal_reply())
+    result = run_attempt(model, tool_set, [])
+    assert result.status == "proposed"
+    assert json.loads(model.requests[1][0][-1]["content"]) == {"ok": False, "error": READ_FIRST}
+    assert tool_set.reads_remaining == 0
+    assert sum(entry.get("error") == READ_FIRST for entry in result.messages) == 1
+
+
+def test_second_premature_proposal_cannot_pass_with_a_failed_source_read(tool_set):
+    model = ScriptedModel(proposal_reply(), reply(("read_source", {"path": ".env"}), *READS[1:]), proposal_reply())
+    result = run_attempt(model, tool_set, [])
+    assert result.status == "invalid" and result.reason == READ_FIRST
+    assert result.proposal is None and len(model.requests) == 3
+
+
+def test_large_source_prefers_complete_flag_referencing_blocks():
+    marker = 'def check(flags):\n    return flags.get("feature")'
+    text = "# unrelated source\n" * 340 + marker + "\n# unrelated again\n" * 340
+    excerpt = _source_excerpt(Path("shop.py"), text, frozenset({"feature"}))
+    assert marker in excerpt and "unrelated source" not in excerpt
 
 
 @pytest.mark.parametrize("template", ["{}", " \n {} \t ", "\n```json\n{}\n```\n ", "```\r\n{}\r\n```"])

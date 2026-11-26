@@ -8,7 +8,7 @@ from email.utils import format_datetime
 import pytest
 import requests
 
-from rewind.agent.llm import LLMAdapter, LLMError, _retry_after_delay
+from rewind.agent.llm import LLMAdapter, LLMError, _rate_limit_delay, _retry_after_delay
 from rewind.config import AgentConfig
 
 
@@ -33,7 +33,7 @@ def response(status=200, data=None):
 
 
 def test_retry_then_fallback_on_transport_and_5xx(model_config):
-    pending = iter([requests.Timeout("response info withheld"), response(503), response()])
+    pending = iter([requests.Timeout("response info withheld"), response(503), response(503), response()])
     endpoints = []
 
     def fake_post(url, *, headers, json, timeout, allow_redirects):
@@ -46,11 +46,11 @@ def test_retry_then_fallback_on_transport_and_5xx(model_config):
 
     adapter = LLMAdapter(model_config, post=fake_post)
     assert adapter.complete([], [])["content"] == "fixture text"
-    assert [rec.provider for rec in adapter.calls] == ["groq", "groq", "gemini"]
-    assert [rec.outcome for rec in adapter.calls] == ["timeout", "server_error", "ok"]
+    assert [rec.provider for rec in adapter.calls] == ["groq", "groq", "groq", "gemini"]
+    assert [rec.outcome for rec in adapter.calls] == ["timeout", "server_error", "server_error", "ok"]
     assert (adapter.calls[-1].prompt_tokens, adapter.calls[-1].completion_tokens) == (42, 9)
     assert all(rec.latency_ms >= 0 for rec in adapter.calls)
-    assert endpoints[0] == endpoints[1] and endpoints[2][0].endswith("/openai/chat/completions")
+    assert endpoints[0] == endpoints[1] == endpoints[2] and endpoints[3][0].endswith("/openai/chat/completions")
     assert "fixture-groq-only" not in repr([asdict(rec) for rec in adapter.calls])
 
 
@@ -63,12 +63,12 @@ def test_nontransient_http_error_never_retries_or_falls_back(model_config, statu
     assert len(adapter.calls) == 1
 
 
-@pytest.mark.parametrize("header, wait", [("2", 2.0), ("75", 10.0), (None, 1.0)])
+@pytest.mark.parametrize("header, wait", [("2", 2.0), ("75", 60.0), (None, 1.0)])
 def test_rate_limit_honors_retry_after_then_falls_back(model_config, header, wait):
     limited = response(429)
     if header is not None:
         limited.headers["Retry-After"] = header
-    responses = iter([limited, limited, response()])
+    responses = iter([limited, limited, limited, response()])
     timeline = []
 
     def post(_url, **kwargs):
@@ -77,8 +77,9 @@ def test_rate_limit_honors_retry_after_then_falls_back(model_config, header, wai
 
     adapter = LLMAdapter(model_config, post=post, sleep=timeline.append)
     assert adapter.complete([], [])["content"] == "fixture text"
-    assert timeline == [model_config.model, wait, model_config.model, model_config.fallback.model]
-    assert [record.outcome for record in adapter.calls] == ["rate_limited", "rate_limited", "ok"]
+    assert timeline == [model_config.model, wait, model_config.model, wait, model_config.model, model_config.fallback.model]
+    assert [record.outcome for record in adapter.calls] == ["rate_limited"] * 3 + ["ok"]
+    assert [record.retry_wait_seconds for record in adapter.calls] == [wait, wait, 0.0, 0.0]
 
 
 def test_success_after_a_rate_limit_does_not_use_gemini(model_config):
@@ -92,8 +93,20 @@ def test_success_after_a_rate_limit_does_not_use_gemini(model_config):
 
 def test_retry_after_http_date_is_supported_and_capped():
     now = datetime.now(timezone.utc)
-    assert _retry_after_delay(format_datetime(now + timedelta(minutes=1), usegmt=True)) == 10.0
+    assert _retry_after_delay(format_datetime(now + timedelta(minutes=2), usegmt=True)) == 60.0
     assert _retry_after_delay(format_datetime(now - timedelta(minutes=1), usegmt=True)) == 0.0
+
+
+def test_quota_reset_headers_wait_for_depleted_resource_only():
+    headers = requests.structures.CaseInsensitiveDict({
+        "x-ratelimit-reset-requests": "1h50m", "x-ratelimit-remaining-requests": "200",
+        "x-ratelimit-reset-tokens": "8s250ms", "x-ratelimit-remaining-tokens": "0",
+    })
+    assert _rate_limit_delay(headers) == 8.25
+    headers["x-ratelimit-remaining-requests"] = "0"
+    assert _rate_limit_delay(headers) == 60.0
+    headers["Retry-After"] = "5"
+    assert _rate_limit_delay(headers) == 5.0
 
 
 def test_bad_proposal_is_not_a_provider_failure(model_config):

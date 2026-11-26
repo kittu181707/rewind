@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from dataclasses import dataclass, field
 import json
 from pathlib import Path
@@ -16,6 +17,7 @@ from rewind.flagsmith_ops import FlagsmithOpsError
 
 MAX_READ_CALLS = 6
 MAX_SOURCE_BYTES = 128 * 1024
+MAX_SOURCE_CHARS = 4_500
 
 
 class ToolError(ValueError):
@@ -62,6 +64,26 @@ def _source_forbidden(path: Path) -> bool:
     ) or path.suffix.lower() in {".yaml", ".yml", ".toml"}
 
 
+def _source_excerpt(path: Path, text: str, flags: frozenset[str]) -> str:
+    """Prefer complete flag-referencing blocks in large Python source files."""
+    if len(text) <= MAX_SOURCE_CHARS:
+        return text
+    if path.suffix == ".py":
+        try:
+            nodes = ast.parse(text).body
+        except SyntaxError:
+            nodes = []
+        lines = text.splitlines()
+        relevant = ["\n".join(lines[node.lineno - 1:node.end_lineno]) for node in nodes if any(
+            isinstance(value, ast.Constant) and isinstance(value.value, str) and value.value in flags
+            for value in ast.walk(node)
+        )]
+        if relevant:
+            return "[Source excerpts referencing configured flags; unrelated blocks omitted.]\n" + "\n\n".join(relevant)[:MAX_SOURCE_CHARS]
+    half = MAX_SOURCE_CHARS // 2
+    return text[:half] + "\n[Middle of source omitted.]\n" + text[-half:]
+
+
 class AttemptTools:
     def __init__(
         self, config: RewindConfig, source_root: Path, flag_state: dict[str, Any], evidence: dict[str, Any],
@@ -69,6 +91,7 @@ class AttemptTools:
     ) -> None:
         self._root = source_root.resolve()
         self._sources = {f"source:{index}": value for index, value in enumerate(config.source_paths, 1)}
+        self._flags = frozenset(config.allowed.flags)
         self._validate = validate
         self._redact = redact
         self._flag_state = self.scrub(flag_state)
@@ -126,7 +149,7 @@ class AttemptTools:
                 data = source.read(MAX_SOURCE_BYTES + 1)
             if len(data) > MAX_SOURCE_BYTES:
                 raise ToolError("Allowlisted source is too large")
-            return self._redact(data.decode("utf-8"))
+            return self._redact(_source_excerpt(relative, data.decode("utf-8"), self._flags))
         except (OSError, UnicodeError, RuntimeError):
             raise ToolError("Could not read the allowlisted UTF-8 source") from None
 

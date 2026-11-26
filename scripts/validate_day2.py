@@ -36,6 +36,7 @@ ENVIRONMENTS = frozenset({"rehearsal", "demo-target"})
 FLAG_NAMES = frozenset({"checkout_v2", "cart_compat_reader"})
 REQUIRED = ("GROQ_API_KEY", "GEMINI_API_KEY", "FLAGSMITH_ENV_KEY_REHEARSAL", "FLAGSMITH_ENV_KEY_TARGET")
 FLAKY_MODEL_OUTCOMES = {"rate_limited", "server_error", "timeout", "transport_error"}
+RUN_INTERVAL_SECONDS = 45
 WRITES = ("flagsmith flag update ", "flagsmith flag delete ")
 AUTH_URL_BYTES = re.compile(AUTH_URL.pattern.encode(), re.IGNORECASE)
 
@@ -205,6 +206,8 @@ def validate_outcome(scenario: Scenario, row: dict, run: dict, transcript: str) 
         require(REFUSAL in transcript.splitlines() and "GATE 2:" not in transcript and not target_writes,
                 f"{scenario.name}: refusal sentence or no-target invariant did not hold")
     if scenario.status == "verified":
+        require([attempt["status"] for attempt in run["attempts"]] == ["verified"],
+                f"{scenario.name}: rehearsal required a correction; review the recorded diagnoses before freezing")
         require(run["target_failure_reproduced"] is True and any(
             step["label"] == "Target: verify after recovery" and step["ok"] is True for step in run["transitions"]
         ), f"{scenario.name}: there is no passing target verification after reproducing the failure")
@@ -219,7 +222,8 @@ def is_flaky(row: dict, run: dict) -> bool:
     if run.get("status") != "stopped":
         return False
     calls = run.get("llm_calls", [])
-    return (bool(calls) and calls[-1].get("outcome") in FLAKY_MODEL_OUTCOMES) or "timed out" in (run.get("error") or "").lower()
+    return (run.get("error_kind") == "provider" or (bool(calls) and calls[-1].get("outcome") in FLAKY_MODEL_OUTCOMES)
+            or "timed out" in (run.get("error") or "").lower())
 
 
 def run_scenario(scenario: Scenario, number: int, config: RewindConfig, folder: Path, values: dict) -> dict:
@@ -436,7 +440,7 @@ def main() -> int:
             for scenario in SCENARIOS:
                 for number in (1, 2):
                     if record["runs"]:
-                        time.sleep(10)
+                        time.sleep(RUN_INTERVAL_SECONDS)
                     print(f"{scenario.name}.{number}: starting {scenario.case}, scripted approvals", flush=True)
                     row = run_scenario(scenario, number, config, folder, values)
                     record["runs"].append(row)

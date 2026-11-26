@@ -20,7 +20,7 @@ from typing import Any, Callable
 import requests
 from rich.console import Console
 
-from rewind.agent.llm import ChatModel, LLMAdapter
+from rewind.agent.llm import ChatModel, LLMAdapter, LLMError
 from rewind.agent.tools import AttemptTools, Proposal, run_attempt
 from rewind.approvals import (
     ApprovalError, ApprovalToken, approval_identity, approval_uses, close_rehearsal, gate1_rehearsal, gate2_target,
@@ -150,6 +150,29 @@ class LocalApp:
 def _evidence(result: VerificationResult) -> dict[str, Any]:
     return {"ok": result.ok, "summary": result.summary, "steps": result.steps,
             "failed_assertions": result.failed_assertions, "user_outcomes": result.user_outcomes}
+
+
+def _model_context(state: dict, result: VerificationResult) -> tuple[dict, dict]:
+    flags = state["flags"]
+    users = {
+        uid: {"status": outcome["http_status"], "executed_version": outcome["executed_version"],
+              "effective_flags": {flag: value for flag, value in outcome["effective_flags"].items() if flag in flags}}
+        for uid, outcome in result.user_outcomes.items()
+    }
+    failures = list(dict.fromkeys(
+        (item.get("user"), item.get("assertion"), str(item.get("detail", ""))[:160])
+        for item in result.failed_assertions
+    ))
+    evidence = {"summary": result.summary[:300], "user_outcomes": users, "failed_assertions": [
+        {"user": user, "name": name, "detail": detail} for user, name, detail in failures[:20]
+    ]}
+    flag_state = {"flags": {
+        name: {"default": setting["enabled"],
+               "segment_overrides": {seg: row["enabled"] for seg, row in setting["overrides"].items()},
+               "identity_overrides": {uid: row["enabled"] for uid, row in setting["identity_overrides_detail"].items()}}
+        for name, setting in flags.items()
+    }, "effective_flags": {uid: user["effective_flags"] for uid, user in users.items()}}
+    return flag_state, evidence
 
 
 def _reason(result: VerificationResult, goal_version: str) -> str:
@@ -345,9 +368,9 @@ class _Run:
                             self.say("The rehearsal rollback passed without a repair; no target changes attempted.")
                             return None
 
-                    tools = AttemptTools(self.config, self.root, {**configuration(rolled_state),
-                        "effective_flags": {uid: row["effective_flags"] for uid, row in failure.user_outcomes.items()}},
-                        _evidence(failure), lambda *op: self.ops.validate_operation(instance.environment, *op), self.clean)
+                    flag_state, evidence = _model_context(rolled_state, failure)
+                    tools = AttemptTools(self.config, self.root, flag_state, evidence,
+                        lambda *op: self.ops.validate_operation(instance.environment, *op), self.clean)
                     with self.time(f"Agent diagnosis {number}"):
                         decision = run_attempt(self.model, tools, previous)
                     proposal = decision.proposal
@@ -467,6 +490,8 @@ class _Run:
         except (RuntimeError, ValueError, OSError, subprocess.SubprocessError, KeyboardInterrupt) as exc:
             self.data["status"] = "stopped"
             self.data["error"] = str(exc) or type(exc).__name__
+            if isinstance(exc, LLMError):
+                self.data["error_kind"] = "provider"
             self.say(f"Stopped: {self.data['error']}")
             changes = [change for change in self.data["changes"] if change["environment"] == self.target.environment
                        and change.get("status") != "blocked before recorded write"]

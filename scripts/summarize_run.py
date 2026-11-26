@@ -44,6 +44,8 @@ def summarize(run: dict) -> dict:
         "error": run.get("error"), "target_failure_reproduced": run.get("target_failure_reproduced"),
         "elapsed_seconds": run.get("elapsed_seconds"), "timings": run.get("timings", []),
         "llm_seconds": round(sum(call.get("latency_ms", 0) for call in calls) / 1000, 3),
+        "llm_retry_wait_seconds": round(sum(call.get("retry_wait_seconds", 0) for call in calls), 3),
+        "prompt_tokens_per_call": [call.get("prompt_tokens") for call in calls],
         "llm_calls": len(calls), "prompt_tokens": _tokens(calls, "prompt_tokens"),
         "completion_tokens": _tokens(calls, "completion_tokens"),
         "calls_without_token_counts": sum(
@@ -63,8 +65,10 @@ def format_summary(summary: dict, label: str) -> str:
         f"approval_mode: {summary['approval_mode']}; attempts: {len(summary['attempts'])}",
         f"Target failure reproduced: {summary['target_failure_reproduced']}",
         f"Total: {summary['elapsed_seconds']} s; LLM HTTP time: {summary['llm_seconds']} s "
-        f"({summary['llm_calls']} calls); prompt/completion tokens: {summary['prompt_tokens']}/{summary['completion_tokens']} "
+        f"({summary['llm_calls']} calls); retry waits: {summary['llm_retry_wait_seconds']} s; "
+        f"prompt/completion tokens: {summary['prompt_tokens']}/{summary['completion_tokens']} "
         f"({summary['calls_without_token_counts']} calls without full usage)",
+        f"Prompt tokens per call: {summary['prompt_tokens_per_call']}",
         f"Models called: {', '.join(summary['models_used']) or 'none'}; Flagsmith commands: {summary['flagsmith_command_count']}",
     ]
     if summary["error"]:

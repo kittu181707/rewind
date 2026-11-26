@@ -102,6 +102,7 @@ def test_retry_never_follows_a_target_write_or_agent_refusal():
     assert not validate_day2.is_flaky({"writes": [{"environment": "demo-target"}]}, flaky)
     assert not validate_day2.is_flaky({"writes": []}, {**flaky, "status": "refused"})
     assert not validate_day2.is_flaky({"writes": []}, {"status": "stopped", "llm_calls": [{"outcome": "error"}]})
+    assert validate_day2.is_flaky({"writes": []}, {"status": "stopped", "error_kind": "provider"})
 
 
 def test_secret_audit_counts_occurrences_without_values_or_urls(tmp_path, monkeypatch):

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 import math
 import os
+import re
 import time
 from typing import Any, Callable, Protocol
 
@@ -20,7 +21,11 @@ _ENDPOINTS = {
     "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
 }
 TIMEOUT_S = 30
-MAX_RETRY_DELAY_S = 10.0
+PRIMARY_RETRIES = 2
+MAX_RETRY_DELAY_S = 60.0
+_DURATION = re.compile(r"(?:\d+(?:\.\d+)?(?:ms|s|m|h|d))+")
+_DURATION_PART = re.compile(r"(\d+(?:\.\d+)?)(ms|s|m|h|d)")
+_DURATION_UNITS = {"ms": 0.001, "s": 1.0, "m": 60.0, "h": 3600.0, "d": 86400.0}
 
 
 class LLMError(RuntimeError):
@@ -33,9 +38,9 @@ class _TransientLLMError(LLMError):
         self.retry_delay = retry_delay
 
 
-def _retry_after_delay(header: str | None) -> float:
+def _retry_after_delay(header: str | None) -> float | None:
     if not header:
-        return 1.0
+        return None
     try:
         delay = float(header)
     except ValueError:
@@ -45,8 +50,31 @@ def _retry_after_delay(header: str | None) -> float:
                 retry_at = retry_at.replace(tzinfo=timezone.utc)
             delay = (retry_at - datetime.now(timezone.utc)).total_seconds()
         except (OverflowError, TypeError, ValueError):
-            return 1.0
-    return max(0.0, min(MAX_RETRY_DELAY_S, delay)) if math.isfinite(delay) else 1.0
+            return None
+    return max(0.0, min(MAX_RETRY_DELAY_S, delay)) if math.isfinite(delay) else None
+
+
+def _rate_limit_delay(headers) -> float:
+    retry_after = _retry_after_delay(headers.get("Retry-After"))
+    if retry_after is not None:
+        return retry_after
+    delays = []
+    for name, value in headers.items():
+        if not name.lower().startswith("x-ratelimit-reset-"):
+            continue
+        resource = name.lower().removeprefix("x-ratelimit-reset-")
+        remaining = headers.get(f"x-ratelimit-remaining-{resource}")
+        if remaining and remaining.isdecimal() and int(remaining) > 0:
+            continue
+        value = value.strip().lower()
+        if _DURATION.fullmatch(value):
+            delay = sum(float(part) * _DURATION_UNITS[unit] for part, unit in _DURATION_PART.findall(value))
+            delays.append(min(delay, MAX_RETRY_DELAY_S))
+        else:
+            delay = _retry_after_delay(value)
+            if delay is not None:
+                delays.append(delay)
+    return max(delays, default=1.0)
 
 
 @dataclass(frozen=True)
@@ -58,6 +86,7 @@ class LLMCall:
     completion_tokens: int | None
     outcome: str
     http_status: int | None
+    retry_wait_seconds: float = 0.0
 
 
 class ChatModel(Protocol):
@@ -77,18 +106,19 @@ class LLMAdapter:
         self.calls: list[LLMCall] = []
 
     def complete(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> dict[str, Any]:
-        """Retry the primary once on a transient failure, then try the fallback once."""
-        try:
-            return self._call(self.config, messages, tools)
-        except _TransientLLMError as first:
-            if first.retry_delay:
-                self._sleep(first.retry_delay)
+        """Retry a transient primary failure twice before trying the configured fallback."""
+        for attempt in range(PRIMARY_RETRIES + 1):
             try:
                 return self._call(self.config, messages, tools)
-            except _TransientLLMError:
-                if self.config.fallback is None:
-                    raise
-        return self._call(self.config.fallback, messages, tools)
+            except _TransientLLMError as exc:
+                if attempt == PRIMARY_RETRIES:
+                    if self.config.fallback is None:
+                        raise
+                    return self._call(self.config.fallback, messages, tools)
+                if exc.retry_delay:
+                    self._sleep(exc.retry_delay)
+                    self.calls[-1] = replace(self.calls[-1], retry_wait_seconds=exc.retry_delay)
+        raise AssertionError("Unreachable retry loop exit")
 
     def _call(
         self, model: AgentConfig | FallbackAgentConfig,
@@ -126,7 +156,7 @@ class LLMAdapter:
             status = response.status_code
             if status == 429:
                 outcome = "rate_limited"
-                raise _TransientLLMError(f"{label}: HTTP 429", retry_delay=_retry_after_delay(response.headers.get("Retry-After")))
+                raise _TransientLLMError(f"{label}: HTTP 429", retry_delay=_rate_limit_delay(response.headers))
             if 500 <= status < 600:
                 outcome = "server_error"
                 raise _TransientLLMError(f"{label}: HTTP {status}")

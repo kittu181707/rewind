@@ -105,7 +105,10 @@ def poll_eval_three_consecutive(
             if status != 200 or not isinstance(body.get("effective_flags"), dict):
                 all_ok = False
                 continue
-            flags = {k: bool(v) for k, v in body["effective_flags"].items()}
+            flags = dict(body["effective_flags"])
+            if any(not isinstance(value, bool) for value in flags.values()):
+                all_ok = False
+                continue
             if expected_flags is not None:
                 for k, want in expected_flags.items():
                     if k not in flags or not isinstance(flags[k], bool) or flags[k] is not bool(want):

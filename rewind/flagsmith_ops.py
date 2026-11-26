@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 from dataclasses import dataclass
 import json
 import os
@@ -12,7 +14,10 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from rewind.approvals import ApprovalError, ApprovalToken, _consume_token
+from rewind.approvals import (
+    ApprovalError, ApprovalToken, _begin_target_write, _close_target, _consume_token,
+    _finish_target_write, _record_target_failure, _verify_target_snapshot,
+)
 from rewind.config import RewindConfig
 
 
@@ -27,6 +32,14 @@ class CommandRecord:
     duration_ms: float
     stdout: str
     stderr: str
+
+
+@dataclass(frozen=True)
+class TargetReplay:
+    """Only the next approved write and a trusted reproduction result are accepted."""
+
+    apply_next: Callable[[str, str, str], CommandRecord]
+    record_failure: Callable[[Any], None]
 
 
 RunnerFn = Callable[[list[str], dict[str, str]], subprocess.CompletedProcess[str]]
@@ -235,49 +248,95 @@ class FlagsmithOps:
         operations: Iterable[tuple[str, str, str]],
         approval: ApprovalToken | None,
     ) -> list[CommandRecord]:
-        """Validate, verify token & target drift, then apply an exact sequence of operations."""
-        op_tuple = tuple((str(f), str(s), str(o)) for f, s, o in operations)
-        if not op_tuple:
+        """Apply a batch, respecting a rehearsal budget or an exact Gate 2 plan."""
+        sequence = tuple(operations)
+        if not sequence:
             raise FlagsmithOpsError("At least one operation is required")
+        for op in sequence:
+            self.validate_operation(environment, *op)
+        target = self.config.flagsmith.target.environment
+        if environment == target:
+            with self.approved_target_plan(environment, sequence, approval) as replay:
+                return [replay.apply_next(*op) for op in sequence]
 
-        for flag, scope, op in op_tuple:
-            self.validate_operation(environment, flag, scope, op)
+        rehearsal = self.config.flagsmith.rehearsal.environment
+        session = isinstance(approval, ApprovalToken) and approval.phase == "rehearsal"
 
-        rehearsal_env = self.config.flagsmith.rehearsal.environment
-        target_env = self.config.flagsmith.target.environment
-        session = environment == rehearsal_env and isinstance(approval, ApprovalToken) and approval.phase == "rehearsal"
-
-        def authorize(writes: tuple[tuple[str, str, str], ...]) -> ApprovalToken:
+        def authorize(writes: tuple[tuple[str, str, str], ...]) -> None:
             try:
-                return _consume_token(
-                    approval, environment=environment, rehearsal_env=rehearsal_env,
-                    target_env=target_env, operations=writes, allow_setup=True,
-                )
+                _consume_token(approval, environment=environment, rehearsal_env=rehearsal,
+                               target_env=target, operations=writes, allow_setup=True)
             except ApprovalError as exc:
                 raise FlagsmithOpsError(str(exc)) from exc
 
-        verified_token = None if session else authorize(op_tuple)
-
-        if environment == target_env:
-            from rewind.snapshot import take_snapshot
-
-            current = take_snapshot(self, self.config, environment)
-            assert verified_token is not None
-            if current.hash != verified_token.snapshot_hash:
-                raise FlagsmithOpsError(
-                    f"Target snapshot drifted since Gate 2 approval "
-                    f"(expected={verified_token.snapshot_hash}, current={current.hash}); "
-                    f"Gate 2 approval required again"
-                )
-
+        if not session:
+            authorize(sequence)
         env_key = self._resolve_env_key(environment)
-        records: list[CommandRecord] = []
-        for flag, scope, op in op_tuple:
+        records = []
+        for op in sequence:
             if session:
-                authorize(((flag, scope, op),))
-            _, rec = self._run_cli(self._build_flag_args(flag, scope, op, env_key))
-            records.append(rec)
+                authorize((op,))
+            _, record = self._run_cli(self._build_flag_args(*op, env_key))
+            records.append(record)
         return records
+
+    @contextmanager
+    def approved_target_plan(
+        self,
+        environment: str,
+        operations: Iterable[tuple[str, str, str]],
+        approval: ApprovalToken | None,
+    ):
+        """Consume Gate 2 once, then execute only its ordered, drift-checked writes."""
+        from rewind.snapshot import take_snapshot
+
+        sequence = tuple(operations)
+        target = self.config.flagsmith.target.environment
+        if environment != target or not sequence:
+            raise FlagsmithOpsError("A target plan requires the configured target and at least one operation")
+        for op in sequence:
+            self.validate_operation(environment, *op)
+        try:
+            token = _consume_token(
+                approval, environment=environment, rehearsal_env=self.config.flagsmith.rehearsal.environment,
+                target_env=target, operations=sequence,
+            )
+        except ApprovalError as exc:
+            raise FlagsmithOpsError(str(exc)) from exc
+
+        def snapshot_hash() -> str:
+            return take_snapshot(self, self.config, environment).hash
+
+        def apply_next(flag: str, scope: str, operation: str) -> CommandRecord:
+            try:
+                self.validate_operation(environment, flag, scope, operation)
+                _begin_target_write(token, (flag, scope, operation), snapshot_hash())
+                _, record = self._run_cli(self._build_flag_args(flag, scope, operation, env_key))
+                _finish_target_write(token, snapshot_hash())
+                return record
+            except ApprovalError as exc:
+                _close_target(token, require_complete=False)
+                raise FlagsmithOpsError(str(exc)) from exc
+            except BaseException:
+                _close_target(token, require_complete=False)
+                raise
+
+        def record_failure(result: Any) -> None:
+            try:
+                _record_target_failure(token, result)
+            except ApprovalError as exc:
+                raise FlagsmithOpsError(str(exc)) from exc
+
+        try:
+            env_key = self._resolve_env_key(environment)
+            # Also guard before the caller can touch the target fixture DB.
+            _verify_target_snapshot(token, snapshot_hash())
+            yield TargetReplay(apply_next, record_failure)
+            _close_target(token, require_complete=True)
+        except ApprovalError as exc:
+            raise FlagsmithOpsError(str(exc)) from exc
+        finally:
+            _close_target(token, require_complete=False)
 
     def apply_operation(
         self,

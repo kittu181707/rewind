@@ -72,6 +72,10 @@ class AppConfig(BaseModel):
     journey: str = Field(min_length=1)
     rehearsal_port: int = Field(ge=1024, le=65535)
     target_port: int = Field(ge=1024, le=65535)
+    fixture_writes: list[str] = Field(default_factory=lambda: [
+        "Reset the disposable fixture database with the configured reset command.",
+        "Run the configured prepare and checkout journeys; their fixture writes are recorded in the evidence.",
+    ], min_length=1)
 
     @model_validator(mode="after")
     def distinct_ports(self) -> "AppConfig":

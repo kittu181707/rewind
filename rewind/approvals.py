@@ -15,7 +15,7 @@ class ApprovalError(RuntimeError):
 
 @dataclass(frozen=True)
 class ApprovalToken:
-    """Immutable approval token registered by approvals.py."""
+    """Immutable handle; runtime cursor and authority live in the private registry."""
 
     token_id: str = field(repr=False)
     phase: Literal["rehearsal", "target", "setup"]
@@ -26,6 +26,9 @@ class ApprovalToken:
     snapshot_hash: str | None = None
     environment: str | None = None
     max_operations: int = 0
+    recovery_index: int | None = None
+    reproduction_flags: tuple[str, ...] = ()
+    reproduction_signature: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -42,6 +45,10 @@ class _RegistryEntry:
     used: bool = False
     closed: bool = False
     uses: list[ApprovalUse] = field(default_factory=list)
+    cursor: int = 0
+    expected_snapshot_hash: str | None = None
+    pending_write: bool = False
+    reproduced: bool = False
 
 
 _REGISTRY: dict[str, _RegistryEntry] = {}
@@ -83,17 +90,49 @@ def _normalize_operations(diff: Any) -> tuple[tuple[str, str, str], ...]:
 
 
 def _format_diff_display(diff: Any, operations: tuple[tuple[str, str, str], ...], snapshot_hash: str) -> str:
-    lines = [
-        f"Snapshot hash: {snapshot_hash}",
-        "Exact target operations:",
-    ]
+    lines = [f"Snapshot hash: {snapshot_hash}", "Exact target operations, in order:"]
+    details = diff if isinstance(diff, dict) else {}
+    stages = details.get("stages", ())
     for idx, (flag, scope, op) in enumerate(operations, start=1):
-        lines.append(f"  {idx}. flag={flag} scope={scope} operation={op}")
-    if isinstance(diff, dict):
-        for extra_key in ("db_path", "environment", "note", "fixture_writes"):
-            if extra_key in diff and diff[extra_key] is not None:
-                lines.append(f"{extra_key}: {diff[extra_key]}")
+        what = "delete override (inherit)" if op == "delete_override" else (
+            f"set {'default' if scope == 'environment_default' else 'override'} {'ON' if op == 'set_on' else 'OFF'}"
+        )
+        stage = f"{stages[idx - 1]}: " if idx <= len(stages) else ""
+        lines.append(f"  {idx}. {stage}{flag} / {scope}: {what} [{op}]")
+    for key, label in (("environment", "Target environment"), ("starting_state", "Starting flag state"),
+                       ("db_path", "Target fixture DB"), ("note", "Note")):
+        if details.get(key) is not None:
+            lines.append(f"{label}: {details[key]}")
+    if details.get("fixture_writes"):
+        lines.append("Fixture database writes:")
+        lines.extend(f"  - {write}" for write in details["fixture_writes"])
+    if details.get("recovery_index") is not None:
+        lines.append("recovery runs only if the failure reproduces")
     return "\n".join(lines)
+
+
+def _failure_signature(result: Any, flags: tuple[str, ...]) -> tuple:
+    """Compare checkout evidence, not a caller-supplied success/failure bit."""
+    from rewind.verifier import VerificationResult
+
+    if (not isinstance(result, VerificationResult) or result.phase != "verify" or result.ok
+            or result.exit_code != 1 or not result.user_outcomes or not result.failed_assertions):
+        return ()
+    signature = []
+    for user, outcome in sorted(result.user_outcomes.items()):
+        status = outcome.get("http_status")
+        version = outcome.get("executed_version")
+        effective = outcome.get("effective_flags", {})
+        if (outcome.get("step") != "checkout" or type(status) is not int or status < 200
+                or not isinstance(version, str) or not isinstance(effective, dict)
+                or any(type(effective.get(flag)) is not bool for flag in flags)):
+            return ()
+        failures = tuple(sorted(
+            (str(item.get("assertion")), str(item.get("detail", "")) if item.get("assertion") == "http_status_200" else "")
+            for item in result.failed_assertions if item.get("user") == user and item.get("step") == "checkout"
+        ))
+        signature.append((user, status, version, tuple((flag, effective[flag]) for flag in flags), failures))
+    return tuple(signature) if any(row[-1] for row in signature) else ()
 
 
 def _register_token(token: ApprovalToken) -> ApprovalToken:
@@ -149,12 +188,22 @@ def gate2_target(
     input_fn: Callable[[str], str] = input,
     output_fn: Callable[[str], None] = print,
 ) -> ApprovalToken:
-    """Gate 2: show the exact target diff and starting snapshot hash and require 'yes'."""
+    """Approve one exact target sequence, with an optional locked replay recovery step."""
     snap_hash = str(snapshot_hash).strip()
     if not snap_hash:
         raise ApprovalError("gate2_target requires a non-empty snapshot_hash")
-
     operations = _normalize_operations(diff)
+    details = diff if isinstance(diff, dict) else {}
+    recovery_index = details.get("recovery_index")
+    flags: tuple[str, ...] = ()
+    signature: tuple = ()
+    if recovery_index is not None:
+        if type(recovery_index) is not int or not 0 < recovery_index == len(operations) - 1:
+            raise ApprovalError("A gated recovery must be the last write and follow the rollback")
+        flags = tuple(sorted(details.get("reproduction_flags", ())))
+        signature = _failure_signature(details.get("rehearsal_failure"), flags)
+        if not signature:
+            raise ApprovalError("Gate 2 requires recorded failing rehearsal checkout evidence")
     rendered = _format_diff_display(diff, operations, snap_hash)
 
     output_fn("=== GATE 2: TARGET APPROVAL REQUIRED ===")
@@ -167,16 +216,12 @@ def gate2_target(
             raise ApprovalError("Gate 2 target approval denied")
         approved_by = "human (yes)"
 
-    token = ApprovalToken(
-        token_id=secrets.token_hex(12),
-        phase="target",
-        approved_by=approved_by,
-        issued_at=_utc_now(),
-        summary=rendered,
-        operations=operations,
-        snapshot_hash=snap_hash,
-    )
-    return _register_token(token)
+    return _register_token(ApprovalToken(
+        token_id=secrets.token_hex(12), phase="target", approved_by=approved_by,
+        issued_at=_utc_now(), summary=rendered, operations=operations, snapshot_hash=snap_hash,
+        environment=details.get("environment"), recovery_index=recovery_index,
+        reproduction_flags=flags, reproduction_signature=signature,
+    ))
 
 
 def mint_setup_token(purpose: Literal["seed", "cleanup"], note: str = "") -> ApprovalToken:
@@ -254,6 +299,10 @@ def _authorize(
             raise ApprovalError(
                 f"Target operation list does not match Gate 2 approval: approved={token.operations!r}, requested={operations!r}"
             )
+        if token.environment is not None and token.environment != environment:
+            entry.used = True
+            raise ApprovalError("Gate 2 is bound to a different target environment")
+        entry.expected_snapshot_hash = token.snapshot_hash
     elif environment == rehearsal_env:
         allowed_phases = {"rehearsal", "setup"} if allow_setup else {"rehearsal"}
         if token.phase not in allowed_phases:
@@ -277,6 +326,76 @@ def _authorize(
 
     entry.used = True
     return entry.token
+
+
+class TargetDriftError(ApprovalError):
+    """The target snapshot changed between approved steps."""
+
+
+def _target_entry(token: ApprovalToken) -> _RegistryEntry:
+    entry = _registered(token)
+    if entry.token.phase != "target" or not entry.used or entry.closed:
+        raise ApprovalError("Target plan is not active")
+    return entry
+
+
+def _verify_target_snapshot(token: ApprovalToken, actual_hash: str) -> None:
+    with _LOCK:
+        entry = _target_entry(token)
+        expected = entry.expected_snapshot_hash
+        if actual_hash != expected:
+            entry.closed = True
+            raise TargetDriftError(
+                f"Target snapshot drifted (expected={expected}, current={actual_hash}); Gate 2 approval required again"
+            )
+
+
+def _begin_target_write(token: ApprovalToken, operation: tuple[str, str, str], actual_hash: str) -> None:
+    with _LOCK:
+        entry = _target_entry(token)
+        if (entry.pending_write or entry.cursor >= len(token.operations)
+                or token.operations[entry.cursor] != operation):
+            entry.closed = True
+            raise ApprovalError("Write is not the next approved target operation")
+        if entry.cursor == token.recovery_index and not entry.reproduced:
+            entry.closed = True
+            raise ApprovalError("Recovery is locked until the target reproduces the failure")
+        if actual_hash != entry.expected_snapshot_hash:
+            entry.closed = True
+            raise TargetDriftError(
+                f"Target snapshot drifted (expected={entry.expected_snapshot_hash}, current={actual_hash}); "
+                "Gate 2 approval required again"
+            )
+        entry.pending_write = True
+        entry.uses.append(ApprovalUse(*operation, timestamp=_utc_now()))
+
+
+def _finish_target_write(token: ApprovalToken, actual_hash: str) -> None:
+    with _LOCK:
+        entry = _target_entry(token)
+        if not entry.pending_write:
+            raise ApprovalError("No authorized target write is pending")
+        entry.expected_snapshot_hash = actual_hash
+        entry.pending_write = False
+        entry.cursor += 1
+
+
+def _record_target_failure(token: ApprovalToken, result: Any) -> None:
+    with _LOCK:
+        entry = _target_entry(token)
+        if (token.recovery_index is None or entry.cursor != token.recovery_index or entry.pending_write
+                or entry.reproduced or _failure_signature(result, token.reproduction_flags) != token.reproduction_signature):
+            entry.closed = True
+            raise ApprovalError("target did not reproduce the failure")
+        entry.reproduced = True
+
+
+def _close_target(token: ApprovalToken, *, require_complete: bool) -> None:
+    with _LOCK:
+        entry = _registered(token)
+        entry.closed = True
+        if require_complete and (entry.cursor != len(token.operations) or entry.pending_write):
+            raise ApprovalError("Target plan did not complete; no further writes are authorized")
 
 
 __all__ = [

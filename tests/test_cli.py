@@ -48,9 +48,19 @@ def test_cli_seed_rejects_target_environment(monkeypatch, capsys) -> None:
     assert "cannot mutate target" in err.lower()
 
 
-def test_cli_check_and_demo_remain_placeholders(capsys) -> None:
-    assert cli.main(["demo"]) == 0
-    assert "not implemented yet" in capsys.readouterr().out
+def test_cli_check_delegates_and_demo_remains_a_placeholder(tmp_path, monkeypatch, capsys) -> None:
+    from rewind.orchestrator import CheckResult
 
-    assert cli.main(["check", "--config", "rewind.config.yaml"]) == 0
+    monkeypatch.chdir(tmp_path)
+    calls = []
+
+    def fake_check(config, root):
+        calls.append((config.config_path, root))
+        return CheckResult("verified", root / "run.json")
+
+    monkeypatch.setattr("rewind.orchestrator.run_check", fake_check)
+    config = REPO_ROOT / "examples/demo-shop/rewind.config.yaml"
+    assert cli.main(["check", "--config", str(config)]) == 0
+    assert calls == [(config, tmp_path)]
+    assert cli.main(["demo"]) == 0
     assert "not implemented yet" in capsys.readouterr().out

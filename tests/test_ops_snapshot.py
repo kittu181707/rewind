@@ -381,3 +381,108 @@ def test_snapshot_hash_tracks_rules_identity_values_and_rejects_untracked(tmp_pa
         assert "rehearsal_dummy_sdk_key_12345" not in entry.command
         if "--environment" in entry.command:
             assert "<REDACTED>" in entry.command
+
+
+_TARGET_ORDER = (
+    ("checkout_v2", "environment_default", "set_on"),
+    ("checkout_v2", "environment_default", "set_off"),
+    ("cart_compat_reader", "environment_default", "set_on"),
+)
+
+
+def _recorded_checkout_failure():
+    from rewind.verifier import VerificationResult
+
+    flags = {"checkout_v2": False, "cart_compat_reader": False}
+    return VerificationResult(
+        False, "verify", 1, "legacy rejects the saved cart",
+        user_outcomes={
+            "alice": {"step": "checkout", "http_status": 500, "executed_version": "legacy", "effective_flags": flags},
+            "bob": {"step": "checkout", "http_status": 200, "executed_version": "legacy", "effective_flags": flags},
+        },
+        failed_assertions=[{"step": "checkout", "user": "alice", "assertion": "http_status_200", "detail": "Unrecognized cart schema"}],
+    )
+
+
+def _target_plan_fixture(tmp_path, monkeypatch):
+    cfg = _make_config(tmp_path, monkeypatch)
+    runner = FakeFlagsmithRunner()
+    ops = FlagsmithOps(cfg, runner=runner)
+    snap = take_snapshot(ops, cfg, "demo-target")
+    proof = _recorded_checkout_failure()
+    rendered = []
+    token = gate2_target({
+        "environment": "demo-target", "operations": _TARGET_ORDER, "recovery_index": 2,
+        "stages": ["baseline setup", "rollback", "recovery"], "rehearsal_failure": proof,
+        "reproduction_flags": cfg.allowed.flags, "starting_state": snap.state,
+        "db_path": str(tmp_path / "target.db"), "fixture_writes": ["reset fixture", "save test carts", "record test orders"],
+    }, snap.hash, input_fn=lambda _: "yes", output_fn=rendered.append)
+    return ops, runner, token, proof, "\n".join(rendered)
+
+
+def _count_writes(runner):
+    return sum(call[1:3] in (["flag", "update"], ["flag", "delete"]) for call in runner.calls)
+
+
+def test_ordered_gate2_accepts_own_writes_and_real_failure_evidence(tmp_path, monkeypatch):
+    ops, runner, token, proof, shown = _target_plan_fixture(tmp_path, monkeypatch)
+    assert all(text in shown for text in ("baseline setup", "rollback", "recovery", "target.db", "save test carts",
+                                         "Starting flag state", "recovery runs only if the failure reproduces"))
+    with ops.approved_target_plan("demo-target", _TARGET_ORDER, token) as replay:
+        with pytest.raises(AttributeError):
+            token.cursor = 2
+        with pytest.raises(AttributeError):
+            replay.cursor = 2
+        replay.apply_next(*_TARGET_ORDER[0])
+        replay.apply_next(*_TARGET_ORDER[1])
+        replay.record_failure(proof)
+        replay.apply_next(*_TARGET_ORDER[2])
+    assert _count_writes(runner) == 3
+    assert len(approvals.approval_uses(token)) == 3
+    with pytest.raises(FlagsmithOpsError, match="already been used"):
+        with ops.approved_target_plan("demo-target", _TARGET_ORDER, token):
+            pytest.fail("Completed plan reopened")
+
+
+@pytest.mark.parametrize("first, second", [(None, 1), (None, 2), (0, 0)])
+def test_ordered_gate2_rejects_skipping_reordering_and_repeating(tmp_path, monkeypatch, first, second):
+    ops, runner, token, _, _ = _target_plan_fixture(tmp_path, monkeypatch)
+    with pytest.raises(FlagsmithOpsError, match="not the next approved target operation"):
+        with ops.approved_target_plan("demo-target", _TARGET_ORDER, token) as replay:
+            if first is not None:
+                replay.apply_next(*_TARGET_ORDER[first])
+            replay.apply_next(*_TARGET_ORDER[second])
+    assert _count_writes(runner) == (first is not None)
+
+
+def test_ordered_gate2_recovery_is_locked_without_reproduction(tmp_path, monkeypatch):
+    ops, runner, token, _, _ = _target_plan_fixture(tmp_path, monkeypatch)
+    with pytest.raises(FlagsmithOpsError, match="Recovery is locked"):
+        with ops.approved_target_plan("demo-target", _TARGET_ORDER, token) as replay:
+            replay.apply_next(*_TARGET_ORDER[0])
+            replay.apply_next(*_TARGET_ORDER[1])
+            replay.apply_next(*_TARGET_ORDER[2])
+    assert _count_writes(runner) == 2
+
+
+def test_ordered_gate2_rejects_a_boolean_instead_of_evidence(tmp_path, monkeypatch):
+    ops, runner, token, _, _ = _target_plan_fixture(tmp_path, monkeypatch)
+    with pytest.raises(FlagsmithOpsError, match="target did not reproduce the failure"):
+        with ops.approved_target_plan("demo-target", _TARGET_ORDER, token) as replay:
+            replay.apply_next(*_TARGET_ORDER[0])
+            replay.apply_next(*_TARGET_ORDER[1])
+            replay.record_failure(True)
+    assert _count_writes(runner) == 2
+    with pytest.raises(FlagsmithOpsError, match="Target plan is not active"):
+        replay.apply_next(*_TARGET_ORDER[2])
+
+
+def test_ordered_gate2_checks_drift_after_its_own_write(tmp_path, monkeypatch):
+    ops, runner, token, _, _ = _target_plan_fixture(tmp_path, monkeypatch)
+    with pytest.raises(FlagsmithOpsError, match="Target snapshot drifted.*Gate 2 approval required again"):
+        with ops.approved_target_plan("demo-target", _TARGET_ORDER, token) as replay:
+            replay.apply_next(*_TARGET_ORDER[0])
+            runner.flags["cart_compat_reader"]["enabled"] = True  # another operator
+            replay.apply_next(*_TARGET_ORDER[1])
+    assert _count_writes(runner) == 1
+    assert runner.flags["checkout_v2"]["enabled"] is True  # no revert

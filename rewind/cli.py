@@ -32,6 +32,18 @@ def main(argv: list[str] | None = None) -> int:
     if not args.command:
         parser.print_help()
         return 0
+    if args.command == "check":
+        from dotenv import load_dotenv
+        from rewind.config import ConfigError, load_config
+        from rewind.orchestrator import RunError, run_check
+
+        root = Path.cwd()
+        try:
+            load_dotenv(root / ".env", override=False)
+            return run_check(load_config(args.config), root).exit_code
+        except (ConfigError, RunError) as exc:
+            print(f"rewind check: {exc}", file=sys.stderr)
+            return 1
     if args.command == "seed":
         if str(REPO_ROOT) not in sys.path:
             sys.path.insert(0, str(REPO_ROOT))

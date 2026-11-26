@@ -160,11 +160,14 @@ def run_prepare(
     rollback_flag: str,
     state_file: Path,
     eval_timeout: float,
+    expected_flags: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    raw_expect = expected_flags if expected_flags is not None else {rollback_flag: True}
+    per_user_expect = _resolve_user_expectations(raw_expect, users) or {}
     converged, eval_map, streak, detail = poll_eval_three_consecutive(
         base_url,
         users,
-        expected_flags={rollback_flag: True},
+        expected_flags=per_user_expect,
         timeout_s=eval_timeout,
     )
     steps: list[dict[str, Any]] = []
@@ -212,7 +215,9 @@ def run_prepare(
                     },
                     {
                         "name": "prepare_executed_v2",
-                        "pass": exec_ver == "v2" and eff.get(rollback_flag) is True,
+                        "pass": exec_ver == "v2" and eff.get(rollback_flag) is True and all(
+                            eff.get(key) is expected for key, expected in per_user_expect.get(uid, {}).items()
+                        ),
                         "detail": f"executed_version={exec_ver}, effective_flags={eff}",
                     },
                 ]
@@ -226,6 +231,10 @@ def run_prepare(
                         "executed_version": exec_ver,
                         "effective_flags": eff,
                         "assertions": step_assertions,
+                        "fixture_write": {
+                            "kind": "cart_update", "cart_id": body.get("cart_id"), "sku": item_req["sku"],
+                            "quantity_added": item_req["quantity"], "schema_version": body.get("schema_version"),
+                        } if status == 200 else None,
                     }
                 )
             recorded_users[uid] = {
@@ -369,6 +378,11 @@ def run_verify(
                 "detail": f"status={status}, error={body.get('detail', '')}",
             },
             {
+                "name": "action_flags_match_expectation",
+                "pass": all(eff.get(key) is expected for key, expected in user_want.items()),
+                "detail": f"expected={user_want}, action effective_flags={eff}",
+            },
+            {
                 "name": "executed_version_matches_goal",
                 "pass": exec_ver == goal_version,
                 "detail": f"expected={goal_version}, got={exec_ver}",
@@ -441,6 +455,10 @@ def run_verify(
                 "executed_version": exec_ver,
                 "effective_flags": eff,
                 "assertions": assertions,
+                "fixture_write": {
+                    "kind": "order_insert", "order_id": body.get("order_id"), "cart_id": body.get("cart_id"),
+                    "total_items": body.get("total_items"), "total_cents": body.get("total_cents"),
+                } if status == 200 else None,
             }
         )
 
@@ -469,7 +487,7 @@ def main(argv: list[str] | None = None) -> int:
         expected_flags = json.loads(args.expect_json)
 
     if args.phase == "prepare":
-        result = run_prepare(args.base_url, users, rollback_flag, state_file, args.eval_timeout)
+        result = run_prepare(args.base_url, users, rollback_flag, state_file, args.eval_timeout, expected_flags)
     else:
         result = run_verify(
             args.base_url,

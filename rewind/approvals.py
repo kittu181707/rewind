@@ -5,8 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import secrets
+import sys
 from threading import Lock
 from typing import Any, Callable, Iterable, Literal
+
+
+ApprovalMode = Literal["human", "scripted"]
+HUMAN_APPROVER = "human (yes)"
+SCRIPTED_APPROVER = "scripted (validation harness)"
+_TERMINAL_INPUT = input
 
 
 class ApprovalError(RuntimeError):
@@ -29,6 +36,7 @@ class ApprovalToken:
     recovery_index: int | None = None
     reproduction_flags: tuple[str, ...] = ()
     reproduction_signature: tuple = ()
+    approval_mode: ApprovalMode = "scripted"
 
 
 @dataclass(frozen=True)
@@ -141,11 +149,30 @@ def _register_token(token: ApprovalToken) -> ApprovalToken:
     return token
 
 
+def approval_identity(
+    input_fn: Callable[[str], str], approver: str | None, *, auto_approve: bool = False,
+) -> tuple[ApprovalMode, str]:
+    """A callback or test auto-approval can never claim interactive approval."""
+    mode: ApprovalMode = "human" if input_fn is _TERMINAL_INPUT and not auto_approve else "scripted"
+    label = HUMAN_APPROVER if mode == "human" else SCRIPTED_APPROVER
+    if approver is not None and approver != label:
+        raise ApprovalError("Approver label does not match the approval input mode")
+    return mode, "auto-approved (test)" if auto_approve and approver is None else label
+
+
+def _confirm(prompt: str, gate: str, mode: ApprovalMode, input_fn: Callable[[str], str]) -> None:
+    if mode == "human" and not sys.stdin.isatty():
+        raise ApprovalError(f"{gate} requires an interactive terminal")
+    if input_fn(prompt).strip() != "yes":
+        raise ApprovalError(f"{gate} approval denied")
+
+
 def gate1_rehearsal(
     plan_summary: str,
     *,
     environment: str,
     max_operations: int,
+    approver: str | None = None,
     auto_approve: bool = False,
     input_fn: Callable[[str], str] = input,
     output_fn: Callable[[str], None] = print,
@@ -156,26 +183,23 @@ def gate1_rehearsal(
         raise ApprovalError("gate1_rehearsal requires a non-empty plan_summary")
     if not environment.strip() or type(max_operations) is not int or max_operations < 1:
         raise ApprovalError("Gate 1 requires an environment and a positive operation budget")
+    mode, label = approval_identity(input_fn, approver, auto_approve=auto_approve)
 
     output_fn("=== GATE 1: REHEARSAL APPROVAL REQUIRED ===")
     output_fn(f"Environment: {environment}; maximum Flagsmith operations: {max_operations}")
     output_fn(summary_text)
-    if auto_approve:
-        approved_by = "auto-approved (test)"
-    else:
-        reply = input_fn('Type "yes" to approve rehearsal changes: ')
-        if reply.strip() != "yes":
-            raise ApprovalError("Gate 1 rehearsal approval denied")
-        approved_by = "human (yes)"
+    if not auto_approve:
+        _confirm('Type "yes" to approve rehearsal changes: ', "Gate 1 rehearsal", mode, input_fn)
 
     token = ApprovalToken(
         token_id=secrets.token_hex(12),
         phase="rehearsal",
-        approved_by=approved_by,
+        approved_by=label,
         issued_at=_utc_now(),
         summary=summary_text,
         environment=environment,
         max_operations=max_operations,
+        approval_mode=mode,
     )
     return _register_token(token)
 
@@ -184,6 +208,7 @@ def gate2_target(
     diff: Any,
     snapshot_hash: str,
     *,
+    approver: str | None = None,
     auto_approve: bool = False,
     input_fn: Callable[[str], str] = input,
     output_fn: Callable[[str], None] = print,
@@ -205,22 +230,18 @@ def gate2_target(
         if not signature:
             raise ApprovalError("Gate 2 requires recorded failing rehearsal checkout evidence")
     rendered = _format_diff_display(diff, operations, snap_hash)
+    mode, label = approval_identity(input_fn, approver, auto_approve=auto_approve)
 
     output_fn("=== GATE 2: TARGET APPROVAL REQUIRED ===")
     output_fn(rendered)
-    if auto_approve:
-        approved_by = "auto-approved (test)"
-    else:
-        reply = input_fn('Type "yes" to apply this exact plan to target: ')
-        if reply.strip() != "yes":
-            raise ApprovalError("Gate 2 target approval denied")
-        approved_by = "human (yes)"
+    if not auto_approve:
+        _confirm('Type "yes" to apply this exact plan to target: ', "Gate 2 target", mode, input_fn)
 
     return _register_token(ApprovalToken(
-        token_id=secrets.token_hex(12), phase="target", approved_by=approved_by,
+        token_id=secrets.token_hex(12), phase="target", approved_by=label,
         issued_at=_utc_now(), summary=rendered, operations=operations, snapshot_hash=snap_hash,
         environment=details.get("environment"), recovery_index=recovery_index,
-        reproduction_flags=flags, reproduction_signature=signature,
+        reproduction_flags=flags, reproduction_signature=signature, approval_mode=mode,
     ))
 
 

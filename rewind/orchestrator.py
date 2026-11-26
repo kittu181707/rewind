@@ -22,7 +22,9 @@ from rich.console import Console
 
 from rewind.agent.llm import ChatModel, LLMAdapter
 from rewind.agent.tools import AttemptTools, Proposal, run_attempt
-from rewind.approvals import ApprovalError, ApprovalToken, approval_uses, close_rehearsal, gate1_rehearsal, gate2_target
+from rewind.approvals import (
+    ApprovalError, ApprovalToken, approval_identity, approval_uses, close_rehearsal, gate1_rehearsal, gate2_target,
+)
 from rewind.config import RewindConfig
 from rewind.flagsmith_ops import CommandRecord, FlagsmithOps, FlagsmithOpsError
 from rewind.planning import Operation, PlanningError, configuration, difference, effective_by_user, project
@@ -163,9 +165,10 @@ def _reason(result: VerificationResult, goal_version: str) -> str:
 
 
 class _Run:
-    def __init__(self, config, root: Path, ops, model, apps, console, input_fn) -> None:
+    def __init__(self, config, root: Path, ops, model, apps, console, input_fn, approver: str | None) -> None:
         self.config, self.root, self.ops, self.model, self.apps = config, root, ops, model, apps
         self.console, self.input_fn = console, input_fn
+        self.approval_mode, self.approver = approval_identity(input_fn, approver)
         assert config.agent is not None
         self.max_attempts = config.agent.max_attempts
         now = datetime.now(timezone.utc)
@@ -179,6 +182,7 @@ class _Run:
         self.rollback: Operation = (config.rollback.flag, "environment_default", f"set_{config.rollback.to}")
         self.data: dict[str, Any] = {
             "status": "running", "started_at": now.isoformat(), "project": config.project,
+            "approval_mode": self.approval_mode,
             "provider": config.agent.provider, "model": config.agent.model,
             "environments": {side: instance.environment for side, instance in (("rehearsal", self.rehearsal), ("target", self.target))},
             "app_variant": os.getenv("APP_VARIANT", "default"), "approvals": [], "snapshots": [], "transitions": [],
@@ -233,6 +237,7 @@ class _Run:
 
     def approval(self, token: ApprovalToken, instance: Instance) -> dict[str, Any]:
         record = {"gate": self.gate, "environment": instance.environment, "approved_by": token.approved_by,
+                  "approval_mode": token.approval_mode,
                   "issued_at": token.issued_at, "summary": token.summary, "operations": token.operations,
                   "snapshot_hash": token.snapshot_hash, "max_operations": token.max_operations}
         self.data["approvals"].append(record)
@@ -313,7 +318,7 @@ class _Run:
         self.ops.validate_operation(instance.environment, *self.rollback)
         with self.time("Gate 1 rehearsal approval"):
             token = gate1_rehearsal(summary, environment=instance.environment, max_operations=max_ops,
-                                    input_fn=self.input_fn, output_fn=self.say)
+                                    approver=self.approver, input_fn=self.input_fn, output_fn=self.say)
         try:
             self.approval(token, instance)
             self.require_environment_binding(instance)
@@ -412,7 +417,7 @@ class _Run:
             "reproduction_flags": self.config.allowed.flags,
         }
         with self.time("Gate 2 exact target approval"):
-            token = gate2_target(proof, start.hash, input_fn=self.input_fn, output_fn=self.say)
+            token = gate2_target(proof, start.hash, approver=self.approver, input_fn=self.input_fn, output_fn=self.say)
         audit = self.approval(token, instance)
         try:
             with self.ops.approved_target_plan(instance.environment, operations, token) as replay:
@@ -456,7 +461,8 @@ class _Run:
         except (ApprovalError, EOFError) as exc:
             self.data["status"] = "approval_denied"
             self.data["error"] = str(exc) or "Interactive confirmation is required"
-            self.data["approvals"].append({"gate": self.gate, "status": "not approved", "timestamp": _now()})
+            self.data["approvals"].append({"gate": self.gate, "status": "not approved", "timestamp": _now(),
+                                           "approval_mode": self.approval_mode})
             self.say(f"Gate {self.gate} not approved: {self.data['error']}. Target unchanged by Rewind.")
         except (RuntimeError, ValueError, OSError, subprocess.SubprocessError, KeyboardInterrupt) as exc:
             self.data["status"] = "stopped"
@@ -479,9 +485,10 @@ class _Run:
 def run_check(
     config: RewindConfig, root: Path, *, ops: FlagsmithOps | None = None, model: ChatModel | None = None,
     apps: LocalApp | None = None, console: Console | None = None, input_fn: Callable[[str], str] = input,
+    approver: str | None = None,
 ) -> CheckResult:
     if config.agent is None or not 1 <= config.agent.max_attempts <= 3:
         raise RunError("Configure an agent with one to three recovery attempts")
     source_root = root.resolve()
     return _Run(config, source_root, ops or FlagsmithOps(config), model or LLMAdapter(config.agent),
-                apps or LocalApp(config, source_root), console or Console(), input_fn).run()
+                apps or LocalApp(config, source_root), console or Console(), input_fn, approver).run()

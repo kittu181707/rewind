@@ -138,11 +138,36 @@ def test_public_issue_token_removed_and_human_prompts_validated():
     with pytest.raises(ApprovalError, match="denied"):
         gate2_target([("checkout_v2", "environment_default", "set_off")], "hash123", input_fn=lambda _: "y", output_fn=lambda _: None)
 
-    human_tok = gate1_rehearsal("Rollback checkout_v2", environment="rehearsal", max_operations=2, input_fn=lambda _: "yes", output_fn=lambda _: None)
-    assert human_tok.approved_by == "human (yes)"
+    scripted_tok = gate1_rehearsal("Rollback checkout_v2", environment="rehearsal", max_operations=2, input_fn=lambda _: "yes", output_fn=lambda _: None)
+    assert scripted_tok.approved_by == "scripted (validation harness)"
+    assert scripted_tok.approval_mode == "scripted"
 
     auto_tok = gate2_target([("checkout_v2", "environment_default", "set_off")], "hash123", auto_approve=True, output_fn=lambda _: None)
     assert auto_tok.approved_by == "auto-approved (test)"
+    assert auto_tok.approval_mode == "scripted"
+
+
+def test_scripted_answers_cannot_claim_human_label(monkeypatch):
+    def scripted(_):
+        pytest.fail("Mislabeled input must not be requested")
+
+    with pytest.raises(ApprovalError, match="does not match"):
+        gate1_rehearsal("fixture", environment="rehearsal", max_operations=1,
+                        approver="human (yes)", input_fn=scripted)
+    with pytest.raises(ApprovalError, match="does not match"):
+        gate2_target([("checkout_v2", "environment_default", "set_off")], "fixture",
+                     approver="human (yes)", input_fn=scripted)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    with pytest.raises(ApprovalError, match="interactive terminal"):
+        gate1_rehearsal("fixture", environment="rehearsal", max_operations=1)
+
+
+def test_interactive_confirmation_records_human_mode(monkeypatch):
+    terminal = lambda _: "yes"
+    monkeypatch.setattr(approvals, "_TERMINAL_INPUT", terminal)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    token = gate1_rehearsal("fixture", environment="rehearsal", max_operations=1, input_fn=terminal)
+    assert (token.approved_by, token.approval_mode) == ("human (yes)", "human")
 
 
 def test_allowlist_and_approval_enforcement(tmp_path: Path, monkeypatch):

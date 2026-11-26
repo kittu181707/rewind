@@ -41,6 +41,7 @@ class ScriptedModel:
         self.calls: list[LLMCall] = []
 
     def complete(self, messages, tools):
+        assert "scripted (validation harness)" not in json.dumps([messages, tools])
         self.requests.append(json.loads(messages[1]["content"]))
         self.calls.append(LLMCall("fixture-provider", "fixture-model", 1.0, 5, 3, "ok", 200))
         return next(self.replies)
@@ -182,6 +183,7 @@ def workflow(tmp_path, monkeypatch):
             return next(answers)
 
         result = run_check(config, tmp_path, ops=ops, apps=apps, model=model, input_fn=confirm,
+                           approver="scripted (validation harness)",
                            console=Console(file=output, width=140, force_terminal=False))
         raw = result.evidence.read_text(encoding="utf-8")
         assert all(key not in raw for key in keys.values()) and "token_id" not in raw
@@ -201,7 +203,10 @@ def test_correct_proposal_replays_with_one_yes_at_each_gate(workflow):
     assert len(prompts) == 2
     assert audit["target_failure_reproduced"] is True
     assert [attempt["status"] for attempt in audit["attempts"]] == ["verified"]
-    assert [approval["approved_by"] for approval in audit["approvals"]] == ["human (yes)", "human (yes)"]
+    assert audit["approval_mode"] == "scripted"
+    assert [approval["approval_mode"] for approval in audit["approvals"]] == ["scripted", "scripted"]
+    assert [approval["approved_by"] for approval in audit["approvals"]] == ["scripted (validation harness)"] * 2
+    assert "validation harness" not in json.dumps(audit["attempts"])
     assert _target_writes(flags) == [
         ("cart_compat_reader", "environment_default", "set_off"),
         ("checkout_v2", "environment_default", "set_on"), ROLLBACK, FIX,
@@ -270,6 +275,8 @@ def test_gate2_denied_leaves_target_and_its_fixture_untouched(workflow):
     assert result.status == "approval_denied" and len(prompts) == 2
     assert _target_writes(flags) == [] and all(env != TARGET for env, _ in apps.events)
     assert [approval["gate"] for approval in audit["approvals"]] == [1, 2]
+    assert audit["approvals"][-1]["approval_mode"] == "scripted"
+    assert "approved_by" not in audit["approvals"][-1]
 
 
 def test_no_reproduction_closes_target_plan_without_recovery(workflow):

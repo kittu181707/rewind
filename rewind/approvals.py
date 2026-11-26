@@ -1,10 +1,11 @@
-"""Human-gated approval tokens with single-use private registry and target binding."""
+"""Human-gated rehearsal sessions and single-use target approvals."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import secrets
+from threading import Lock
 from typing import Any, Callable, Iterable, Literal
 
 
@@ -16,22 +17,35 @@ class ApprovalError(RuntimeError):
 class ApprovalToken:
     """Immutable approval token registered by approvals.py."""
 
-    token_id: str
+    token_id: str = field(repr=False)
     phase: Literal["rehearsal", "target", "setup"]
     approved_by: str
     issued_at: str
     summary: str
     operations: tuple[tuple[str, str, str], ...] = ()
     snapshot_hash: str | None = None
+    environment: str | None = None
+    max_operations: int = 0
+
+
+@dataclass(frozen=True)
+class ApprovalUse:
+    flag: str
+    scope: str
+    operation: str
+    timestamp: str
 
 
 @dataclass
 class _RegistryEntry:
     token: ApprovalToken
     used: bool = False
+    closed: bool = False
+    uses: list[ApprovalUse] = field(default_factory=list)
 
 
 _REGISTRY: dict[str, _RegistryEntry] = {}
+_LOCK = Lock()
 
 
 def _utc_now() -> str:
@@ -83,23 +97,29 @@ def _format_diff_display(diff: Any, operations: tuple[tuple[str, str, str], ...]
 
 
 def _register_token(token: ApprovalToken) -> ApprovalToken:
-    _REGISTRY[token.token_id] = _RegistryEntry(token=token, used=False)
+    with _LOCK:
+        _REGISTRY[token.token_id] = _RegistryEntry(token=token)
     return token
 
 
 def gate1_rehearsal(
     plan_summary: str,
     *,
+    environment: str,
+    max_operations: int,
     auto_approve: bool = False,
     input_fn: Callable[[str], str] = input,
     output_fn: Callable[[str], None] = print,
 ) -> ApprovalToken:
-    """Gate 1: show the rehearsal plan and require the human to type 'yes'."""
+    """Gate 1: approve a budget of operations in one rehearsal environment."""
     summary_text = str(plan_summary).strip()
     if not summary_text:
         raise ApprovalError("gate1_rehearsal requires a non-empty plan_summary")
+    if not environment.strip() or type(max_operations) is not int or max_operations < 1:
+        raise ApprovalError("Gate 1 requires an environment and a positive operation budget")
 
     output_fn("=== GATE 1: REHEARSAL APPROVAL REQUIRED ===")
+    output_fn(f"Environment: {environment}; maximum Flagsmith operations: {max_operations}")
     output_fn(summary_text)
     if auto_approve:
         approved_by = "auto-approved (test)"
@@ -115,6 +135,8 @@ def gate1_rehearsal(
         approved_by=approved_by,
         issued_at=_utc_now(),
         summary=summary_text,
+        environment=environment,
+        max_operations=max_operations,
     )
     return _register_token(token)
 
@@ -180,13 +202,43 @@ def _consume_token(
     operations: tuple[tuple[str, str, str], ...],
     allow_setup: bool = False,
 ) -> ApprovalToken:
-    """Validate token against the private registry, bind constraints, and mark it consumed."""
+    """Authorize the next rehearsal write or consume a single-use approval."""
+    with _LOCK:
+        return _authorize(
+            token, environment=environment, rehearsal_env=rehearsal_env,
+            target_env=target_env, operations=operations, allow_setup=allow_setup,
+        )
+
+
+def _registered(token: ApprovalToken | None) -> _RegistryEntry:
     if not isinstance(token, ApprovalToken):
         raise ApprovalError("A registered ApprovalToken is required")
-
     entry = _REGISTRY.get(token.token_id)
-    if entry is None or entry.token != token:
+    if entry is None or entry.token is not token:
         raise ApprovalError("ApprovalToken is forged or not present in registry")
+    return entry
+
+
+def approval_uses(token: ApprovalToken) -> tuple[ApprovalUse, ...]:
+    """Return immutable audit data, including write attempts whose CLI call failed."""
+    with _LOCK:
+        return tuple(_registered(token).uses)
+
+
+def close_rehearsal(token: ApprovalToken) -> None:
+    with _LOCK:
+        entry = _registered(token)
+        if entry.token.phase != "rehearsal":
+            raise ApprovalError("Only a rehearsal session can be closed")
+        entry.closed = True
+
+
+def _authorize(
+    token: ApprovalToken | None, *, environment: str, rehearsal_env: str,
+    target_env: str, operations: tuple[tuple[str, str, str], ...], allow_setup: bool,
+) -> ApprovalToken:
+    entry = _registered(token)
+    token = entry.token
     if entry.used:
         raise ApprovalError("ApprovalToken has already been used")
 
@@ -208,6 +260,15 @@ def _consume_token(
             raise ApprovalError(
                 f"Environment {rehearsal_env!r} rejected token with phase={token.phase!r}"
             )
+        if token.phase == "rehearsal":
+            if token.environment != environment or entry.closed:
+                raise ApprovalError("Gate 1 session is closed or belongs to a different environment")
+            if len(operations) != 1:
+                raise ApprovalError("Authorize each rehearsal write separately")
+            if len(entry.uses) >= token.max_operations:
+                raise ApprovalError("Gate 1 rehearsal operation budget exhausted")
+            entry.uses.append(ApprovalUse(*operations[0], timestamp=_utc_now()))
+            return token
     elif environment == "project":
         if not (allow_setup and token.phase == "setup"):
             raise ApprovalError("Project segment management requires a setup token")
@@ -221,6 +282,8 @@ def _consume_token(
 __all__ = [
     "ApprovalError",
     "ApprovalToken",
+    "approval_uses",
+    "close_rehearsal",
     "gate1_rehearsal",
     "gate2_target",
     "mint_setup_token",

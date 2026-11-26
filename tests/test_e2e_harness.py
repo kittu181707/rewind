@@ -71,7 +71,9 @@ def test_flush_evidence_retains_redacted_logs_and_rows(tmp_path: Path, monkeypat
 
     ops = FlagsmithOps(cfg, cli_path="/usr/local/bin/flagsmith", runner=local_runner)
     ops.list_segments()
-    tok = gate1_rehearsal("compat on", auto_approve=True, output_fn=lambda _: None)
+    tok = gate1_rehearsal(
+        "compat on", environment="rehearsal", max_operations=1, auto_approve=True, output_fn=lambda _: None,
+    )
     ops.apply_operation("rehearsal", "cart_compat_reader", "environment_default", "set_on", tok)
 
     out_dir = tmp_path / "e2e_out"

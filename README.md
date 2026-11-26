@@ -13,9 +13,13 @@
 
 ## Fixture setup
 
-From the repository checkout, `rewind seed --case a|b|refusal` seeds the demo's configured rehearsal environment. `--environment` can explicitly name that environment, but setup cannot write the target. The live Day 1 test harness shows both plans and asks for `yes` at each gate; its target plan includes fixture setup, rollback, and recovery.
+From the repository checkout, `rewind seed --case a|b|refusal` seeds the demo's configured rehearsal environment. `--environment` can explicitly name that environment, but setup cannot write the target. The Day 1 harness uses `auto_approve=True` and does not type `yes`. Unit tests cover the typed-`yes` path using `input_fn`.
 
 When connecting another test app, supply your own **trusted journey command**. Rewind passes `--config` and separate environment-specific `--state-file` paths. The journey defines and asserts the app-specific saved-state invariants; do not run journey code you do not trust.
+
+## Limits
+
+The approval registry is in-process, not cryptographic protection or a sandbox for Python code. Rewind's model tools cannot invoke the approval functions or execute Flagsmith operations; trusted runner code owns both gates and any writes.
 
 ## Prior Work
 

@@ -134,11 +134,11 @@ def test_public_issue_token_removed_and_human_prompts_validated():
     assert not hasattr(approvals, "issue_token")
 
     with pytest.raises(ApprovalError, match="denied"):
-        gate1_rehearsal("Rollback checkout_v2", input_fn=lambda _: "no", output_fn=lambda _: None)
+        gate1_rehearsal("Rollback checkout_v2", environment="rehearsal", max_operations=2, input_fn=lambda _: "no", output_fn=lambda _: None)
     with pytest.raises(ApprovalError, match="denied"):
         gate2_target([("checkout_v2", "environment_default", "set_off")], "hash123", input_fn=lambda _: "y", output_fn=lambda _: None)
 
-    human_tok = gate1_rehearsal("Rollback checkout_v2", input_fn=lambda _: "yes", output_fn=lambda _: None)
+    human_tok = gate1_rehearsal("Rollback checkout_v2", environment="rehearsal", max_operations=2, input_fn=lambda _: "yes", output_fn=lambda _: None)
     assert human_tok.approved_by == "human (yes)"
 
     auto_tok = gate2_target([("checkout_v2", "environment_default", "set_off")], "hash123", auto_approve=True, output_fn=lambda _: None)
@@ -153,7 +153,7 @@ def test_allowlist_and_approval_enforcement(tmp_path: Path, monkeypatch):
     with pytest.raises(FlagsmithOpsError, match="ApprovalToken"):
         ops.apply_operation("rehearsal", "checkout_v2", "environment_default", "set_off", approval=None)
 
-    tok = gate1_rehearsal("rehearsal checks", auto_approve=True, output_fn=lambda _: None)
+    tok = _rehearsal_token("rehearsal checks")
     with pytest.raises(FlagsmithOpsError, match="allowlist"):
         ops.apply_operation("production", "checkout_v2", "environment_default", "set_off", approval=tok)
 
@@ -189,7 +189,7 @@ def test_forged_wrong_phase_setup_reused_drift_and_changed_ops_all_rejected(tmp_
         ops.apply_operation("rehearsal", "checkout_v2", "environment_default", "set_off", forged)
 
     # 2. Wrong phase: rehearsal token cannot mutate target; target token cannot mutate rehearsal
-    r_tok = gate1_rehearsal("rehearse", auto_approve=True, output_fn=lambda _: None)
+    r_tok = _rehearsal_token("rehearse")
     with pytest.raises(FlagsmithOpsError, match="Gate 2 target token"):
         ops.apply_operation("demo-target", "checkout_v2", "environment_default", "set_off", r_tok)
 
@@ -203,10 +203,10 @@ def test_forged_wrong_phase_setup_reused_drift_and_changed_ops_all_rejected(tmp_
     with pytest.raises(FlagsmithOpsError, match="Setup token cannot mutate"):
         ops.apply_operation("demo-target", "checkout_v2", "environment_default", "set_on", setup_tok)
 
-    # 4. Reused token rejected
-    single_tok = gate1_rehearsal("one op", auto_approve=True, output_fn=lambda _: None)
+    # 4. Rehearsal has a finite write budget
+    single_tok = _rehearsal_token("one op")
     ops.apply_operation("rehearsal", "checkout_v2", "environment_default", "set_on", single_tok)
-    with pytest.raises(FlagsmithOpsError, match="already been used"):
+    with pytest.raises(FlagsmithOpsError, match="budget exhausted"):
         ops.apply_operation("rehearsal", "cart_compat_reader", "environment_default", "set_on", single_tok)
 
     # 5. Operation list changed after Gate 2 approval rejected without target mutation
@@ -250,6 +250,48 @@ def test_forged_wrong_phase_setup_reused_drift_and_changed_ops_all_rejected(tmp_
     )
     ops.apply_operation("demo-target", "cart_compat_reader", "environment_default", "set_on", fresh_tok)
     assert runner.flags["cart_compat_reader"]["enabled"] is True
+    with pytest.raises(FlagsmithOpsError, match="already been used"):
+        ops.apply_operation("demo-target", "cart_compat_reader", "environment_default", "set_on", fresh_tok)
+
+
+def _rehearsal_token(summary: str, max_operations: int = 1):
+    return gate1_rehearsal(
+        summary, environment="rehearsal", max_operations=max_operations,
+        auto_approve=True, output_fn=lambda _: None,
+    )
+
+
+def test_rehearsal_session_budget_use_log_and_close(tmp_path, monkeypatch):
+    cfg = _make_config(tmp_path, monkeypatch)
+    runner = FakeFlagsmithRunner()
+    ops = FlagsmithOps(cfg, runner=runner)
+    prompts: list[str] = []
+    shown: list[str] = []
+    token = gate1_rehearsal(
+        "Rollback and test one proposal", environment="rehearsal", max_operations=2,
+        input_fn=lambda prompt: prompts.append(prompt) or "yes", output_fn=shown.append,
+    )
+    rollback = ("checkout_v2", "environment_default", "set_off")
+    fix = ("cart_compat_reader", "segment:vip_users", "set_on")
+    ops.apply_operation("rehearsal", *rollback, token)
+    with pytest.raises(FlagsmithOpsError, match="requires a Gate 2 target token"):
+        ops.apply_operation("demo-target", *fix, token)
+    ops.apply_operation("rehearsal", *fix, token)
+    with pytest.raises(FlagsmithOpsError, match="budget exhausted"):
+        ops.apply_operation("rehearsal", *rollback, token)
+    uses = approvals.approval_uses(token)
+    assert [(u.flag, u.scope, u.operation) for u in uses] == [rollback, fix]
+    assert all(use.timestamp.endswith("+00:00") for use in uses)
+    assert len(runner.calls) == 2 and len(prompts) == 1
+    assert any("maximum Flagsmith operations: 2" in line for line in shown)
+
+    live_budget = _rehearsal_token("another run", max_operations=2)
+    ops.apply_operation("rehearsal", *rollback, live_budget)
+    approvals.close_rehearsal(live_budget)
+    with pytest.raises(FlagsmithOpsError, match="session is closed"):
+        ops.apply_operation("rehearsal", *fix, live_budget)
+    assert len(approvals.approval_uses(live_budget)) == 1
+    assert len(runner.calls) == 3
 
 
 def test_env_secrets_only_registered_when_length_ge_8_and_first_log_redacted(tmp_path: Path, monkeypatch):
@@ -277,7 +319,7 @@ def test_clear_identity_override_requires_setup_authority_and_never_touches_targ
     runner.flags["checkout_v2"]["identity_overrides"] = 1
     ops = FlagsmithOps(cfg, cli_path="/usr/local/bin/flagsmith", runner=runner)
 
-    r_tok = gate1_rehearsal("rehearsal", auto_approve=True, output_fn=lambda _: None)
+    r_tok = _rehearsal_token("rehearsal")
     with pytest.raises(FlagsmithOpsError, match="Setup"):
         ops.clear_identity_override_if_present("rehearsal", "checkout_v2", "alice", r_tok)
 
@@ -324,12 +366,12 @@ def test_snapshot_hash_tracks_rules_identity_values_and_rejects_untracked(tmp_pa
         take_snapshot(ops, cfg, "rehearsal")
     runner.flags["checkout_v2"]["segment_overrides"] = 0
 
-    tok1 = gate1_rehearsal("compat on", auto_approve=True, output_fn=lambda _: None)
+    tok1 = _rehearsal_token("compat on")
     ops.apply_operation("rehearsal", "cart_compat_reader", "environment_default", "set_on", approval=tok1)
     snap3 = take_snapshot(ops, cfg, "rehearsal")
     assert snap3.hash != snap_id_false.hash
 
-    tok2 = gate1_rehearsal("vip on", auto_approve=True, output_fn=lambda _: None)
+    tok2 = _rehearsal_token("vip on")
     ops.apply_operation("rehearsal", "checkout_v2", "segment:vip_users", "set_on", approval=tok2)
     snap4 = take_snapshot(ops, cfg, "rehearsal")
     assert snap4.hash != snap3.hash

@@ -245,22 +245,24 @@ class FlagsmithOps:
 
         rehearsal_env = self.config.flagsmith.rehearsal.environment
         target_env = self.config.flagsmith.target.environment
-        try:
-            verified_token = _consume_token(
-                approval,
-                environment=environment,
-                rehearsal_env=rehearsal_env,
-                target_env=target_env,
-                operations=op_tuple,
-                allow_setup=True,
-            )
-        except ApprovalError as exc:
-            raise FlagsmithOpsError(str(exc)) from exc
+        session = environment == rehearsal_env and isinstance(approval, ApprovalToken) and approval.phase == "rehearsal"
+
+        def authorize(writes: tuple[tuple[str, str, str], ...]) -> ApprovalToken:
+            try:
+                return _consume_token(
+                    approval, environment=environment, rehearsal_env=rehearsal_env,
+                    target_env=target_env, operations=writes, allow_setup=True,
+                )
+            except ApprovalError as exc:
+                raise FlagsmithOpsError(str(exc)) from exc
+
+        verified_token = None if session else authorize(op_tuple)
 
         if environment == target_env:
             from rewind.snapshot import take_snapshot
 
             current = take_snapshot(self, self.config, environment)
+            assert verified_token is not None
             if current.hash != verified_token.snapshot_hash:
                 raise FlagsmithOpsError(
                     f"Target snapshot drifted since Gate 2 approval "
@@ -271,6 +273,8 @@ class FlagsmithOps:
         env_key = self._resolve_env_key(environment)
         records: list[CommandRecord] = []
         for flag, scope, op in op_tuple:
+            if session:
+                authorize(((flag, scope, op),))
             _, rec = self._run_cli(self._build_flag_args(flag, scope, op, env_key))
             records.append(rec)
         return records

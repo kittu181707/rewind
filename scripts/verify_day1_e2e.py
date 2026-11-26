@@ -199,6 +199,8 @@ def _apply_rehearsal(
 ) -> None:
     tok = gate1_rehearsal(
         f"E2E rehearsal: {flag} {scope} {operation} ({reason})",
+        environment=env,
+        max_operations=1,
         auto_approve=True,
         output_fn=lambda _: None,
     )

@@ -94,8 +94,12 @@ def _scope(scope: str) -> str:
 def rehearsal_screen(
     summary: str, environment: str, budget: int, *, title: str = "GATE 1: Rehearsal approval", width: int | None = None,
 ) -> str:
-    lines = [f"Environment: {environment}"]
-    for line in summary.splitlines():
+    summary_lines = summary.splitlines()
+    lines = []
+    if summary_lines and summary_lines[0].startswith("Understood: "):
+        lines.append(summary_lines.pop(0))
+    lines.append(f"Environment: {environment}")
+    for line in summary_lines:
         if line.startswith("Rollback: "):
             raw, _, rest = line.removeprefix("Rollback: ").partition("; up to ")
             operation = _literal(raw)

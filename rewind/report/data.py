@@ -17,6 +17,9 @@ _AUTH_OR_KEY = re.compile(
 )
 _SECRET_FIELDS = {"sdk_key", "api_key", "environment_key", "flag_smith_key", "token", "token_id", "access_token",
                   "refresh_token", "authorization", "client_secret", "password", "request_headers", "request_body"}
+_CREDENTIAL_ASSIGNMENT = re.compile(
+    r"\b[\w-]*(?:key|token|secret|password)\s*[:=]\s*(?:\"[^\"]*\"|'[^']*'|[^\s,;]+)", re.IGNORECASE,
+)
 _TIMESTAMPS = {"timestamp", "issued_at", "closed_at", "started_at", "finished_at"}
 
 
@@ -31,6 +34,18 @@ def _sanitize(value, secrets: tuple[str, ...]):
     if isinstance(value, (list, tuple)):
         return [_sanitize(item, secrets) for item in value]
     return value
+
+
+def _environment_secrets() -> tuple[str, ...]:
+    return tuple(sorted({value for name, value in os.environ.items() if len(value) >= 8
+                        and any(term in name.upper() for term in ("KEY", "TOKEN", "SECRET", "PASSWORD"))},
+                        key=len, reverse=True))
+
+
+def redact_text(value: str) -> str:
+    redacted = _sanitize(value, _environment_secrets())
+    redacted = _CREDENTIAL_ASSIGNMENT.sub("<REDACTED>", redacted)
+    return " ".join("".join(char for char in redacted if char.isprintable() or char.isspace()).split())
 
 
 def utc_time(value: str | None) -> str | None:
@@ -188,14 +203,14 @@ def _summary(data: dict) -> tuple[tuple[str, str], ...]:
         else:
             detail = f"{decision or 'approved'} · {detail}"
         approvals.append(f"Gate {gate['gate']}: {detail}")
-    return (("After the rollback", observed), (label, found), ("What changed", changed),
+    request = data.get("request") or {}
+    request_line = (("Request", f'{request["text"]} — {request["interpretation"]}'),) if request else ()
+    return (*request_line, ("After the rollback", observed), (label, found), ("What changed", changed),
             ("Who approved", "; ".join(approvals) + "."))
 
 
 def public_report(run: dict, *, captured: bool = False, allowed_flags: Iterable[str] | None = None) -> dict:
-    secrets = tuple(sorted({value for name, value in os.environ.items() if value and len(value) >= 8
-                           and any(term in name.upper() for term in ("KEY", "TOKEN", "SECRET", "PASSWORD"))},
-                           key=len, reverse=True))
+    secrets = _environment_secrets()
     metadata = _fields(run, "status", "provider", "model", "approval_mode", "environments", "elapsed_seconds",
                        "started_at", "finished_at", "error")
     approval_log = {item["gate"]: item for item in run.get("approvals", [])}
@@ -208,6 +223,7 @@ def public_report(run: dict, *, captured: bool = False, allowed_flags: Iterable[
         "source": "captured run" if captured or run.get("capture") else "recorded run",
         "allowed_flags": sorted(allowed),
         "capture": _fields(run.get("capture") or {}, "label", "case", "scenario", "validated_commit"),
+        "request": _fields(run.get("request") or {}, "text", "flag", "direction", "interpretation"),
         "transitions": [{
             **_fields(event, "label", "environment", "timestamp", "phase", "summary", "ok"),
             "steps": [_observation(step, allowed) for step in event.get("steps", [])],

@@ -54,6 +54,20 @@ def test_retry_then_fallback_on_transport_and_5xx(model_config):
     assert "fixture-groq-only" not in repr([asdict(rec) for rec in adapter.calls])
 
 
+def test_single_interpretation_call_does_not_retry_or_fall_back(model_config):
+    tools = [{"type": "function", "function": {"name": "select_rollback"}}]
+
+    def post(url, **kwargs):
+        assert url == "https://api.groq.com/openai/v1/chat/completions"
+        assert kwargs["json"]["temperature"] == 0 and kwargs["json"]["tools"] == tools
+        return response(503)
+
+    adapter = LLMAdapter(model_config, post=post)
+    with pytest.raises(LLMError, match="HTTP 503"):
+        adapter.complete_once([], tools)
+    assert [call.outcome for call in adapter.calls] == ["server_error"]
+
+
 @pytest.mark.parametrize("status", [400, 401, 403])
 def test_nontransient_http_error_never_retries_or_falls_back(model_config, status):
     adapter = LLMAdapter(model_config, post=lambda *args, **kwargs: response(status, {"error": "fixture-groq-only"}))

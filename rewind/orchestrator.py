@@ -28,6 +28,7 @@ from rewind.approvals import (
 from rewind.config import RewindConfig
 from rewind.flagsmith_ops import CommandRecord, FlagsmithOps, FlagsmithOpsError
 from rewind.planning import Operation, PlanningError, configuration, difference, effective_by_user, project
+from rewind.request import RollbackRequest
 from rewind.snapshot import EnvironmentSnapshot, take_snapshot
 from rewind.verifier import VerificationResult, verify_journey
 
@@ -189,9 +190,11 @@ def _reason(result: VerificationResult, goal_version: str) -> str:
 
 
 class _Run:
-    def __init__(self, config, root: Path, ops, model, apps, console, input_fn, approver: str | None) -> None:
+    def __init__(self, config, root: Path, ops, model, apps, console, input_fn, approver: str | None,
+                 request: RollbackRequest | None) -> None:
         self.config, self.root, self.ops, self.model, self.apps = config, root, ops, model, apps
         self.console, self.input_fn = console, input_fn
+        self.request = request
         self.approval_mode, self.approver = approval_identity(input_fn, approver)
         assert config.agent is not None
         self.max_attempts = config.agent.max_attempts
@@ -212,6 +215,10 @@ class _Run:
             "app_variant": os.getenv("APP_VARIANT", "default"), "approvals": [], "snapshots": [], "transitions": [],
             "attempts": [], "timings": [], "changes": [], "target_failure_reproduced": None,
         }
+        if request is not None:
+            self.data["request"] = {"text": request.text, "flag": request.flag, "direction": request.direction,
+                                    "interpretation": request.understood}
+            self.data["request_llm_calls"] = [asdict(call) for call in request.calls]
         self.started = time.perf_counter()
         self.gate = 1
 
@@ -339,6 +346,8 @@ class _Run:
                    f"{(self.max_attempts - 1) * 2} restoration writes + 1 margin.\n"
                    f"Allowed flags: {', '.join(self.config.allowed.flags)}; scopes: {', '.join(self.config.allowed.scopes)}; "
                    f"operations: {', '.join(self.config.allowed.operations)}.")
+        if self.request is not None:
+            summary = f"{self.request.understood}\n{summary}"
         self.ops.validate_operation(instance.environment, *self.rollback)
         with self.time("Gate 1 rehearsal approval"):
             token = gate1_rehearsal(summary, environment=instance.environment, max_operations=max_ops,
@@ -511,10 +520,12 @@ class _Run:
 def run_check(
     config: RewindConfig, root: Path, *, ops: FlagsmithOps | None = None, model: ChatModel | None = None,
     apps: LocalApp | None = None, console: Console | None = None, input_fn: Callable[[str], str] = input,
-    approver: str | None = None,
+    approver: str | None = None, request: RollbackRequest | None = None,
 ) -> CheckResult:
     if config.agent is None or not 1 <= config.agent.max_attempts <= 3:
         raise RunError("Configure an agent with one to three recovery attempts")
+    if request is not None:
+        config = request.apply(config)
     source_root = root.resolve()
     return _Run(config, source_root, ops or FlagsmithOps(config), model or LLMAdapter(config.agent),
-                apps or LocalApp(config, source_root), console or Console(), input_fn, approver).run()
+                 apps or LocalApp(config, source_root), console or Console(), input_fn, approver, request).run()

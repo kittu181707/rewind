@@ -133,6 +133,10 @@ class LLMAdapter:
         self._sleep = sleep
         self.calls: list[LLMCall] = []
 
+    def complete_once(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> dict[str, Any]:
+        """Use the primary adapter for a single request, without retries or fallback."""
+        return self._call(self.config, messages, tools)
+
     def complete(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> dict[str, Any]:
         """Retry a transient primary failure twice before trying the configured fallback."""
         for attempt in range(PRIMARY_RETRIES + 1):

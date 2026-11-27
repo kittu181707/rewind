@@ -18,6 +18,10 @@ def build_parser() -> argparse.ArgumentParser:
     check_p = sub.add_parser("check", help="Rehearse and verify a rollback plan")
     check_p.add_argument("--config", required=True, help="Path to rewind.config.yaml")
 
+    do_p = sub.add_parser("do", help="Interpret a rollback request and rehearse it")
+    do_p.add_argument("request", help="Rollback request in plain words")
+    do_p.add_argument("--config", required=True, help="Path to rewind.config.yaml")
+
     demo_p = sub.add_parser("demo", help="Replay a captured run offline")
     demo_p.add_argument("--case", choices=["a", "b", "refusal"], default="a", help="Capture to replay (default: Case A)")
 
@@ -33,20 +37,29 @@ def main(argv: list[str] | None = None) -> int:
     if not args.command:
         parser.print_help()
         return 0
-    if args.command == "check":
+    if args.command in {"check", "do"}:
         from dotenv import load_dotenv
+        from rewind.agent.llm import LLMError
         from rewind.config import ConfigError, load_config
         from rewind.orchestrator import RunError, run_check
         from rewind.report import ReportError, write_report
         from rewind.report.data import REJECTED_SUGGESTION
         from rewind.report.terminal import RunConsole, attempt_display, plain_output
+        from rewind.request import interpret, refusal
 
         root = Path.cwd()
         try:
             load_dotenv(root / ".env", override=False)
             config = load_config(args.config)
             console = RunConsole()
-            result = run_check(config, root, console=console)
+            if args.command == "do":
+                selection = interpret(config, args.request)
+                if selection is None:
+                    print(refusal(config))
+                    return 1
+                result = run_check(config, root, console=console, request=selection)
+            else:
+                result = run_check(config, root, console=console)
             report, data = write_report(result.evidence, allowed_flags=config.allowed.flags)
             if data["status"] == "refused":
                 for attempt in data["attempts"]:
@@ -54,8 +67,8 @@ def main(argv: list[str] | None = None) -> int:
                         console.print(attempt_display(attempt), markup=False, highlight=False)
             print(f"Report: {report}")
             return result.exit_code
-        except (ConfigError, RunError, ReportError) as exc:
-            print(plain_output(f"rewind check: {exc}"), file=sys.stderr)
+        except (ConfigError, LLMError, RunError, ReportError) as exc:
+            print(plain_output(f"rewind {args.command}: {exc}"), file=sys.stderr)
             return 1
     if args.command == "seed":
         if str(REPO_ROOT) not in sys.path:

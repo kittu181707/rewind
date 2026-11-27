@@ -1,0 +1,3192 @@
+{
+  "status": "verified",
+  "started_at": "2026-11-27T01:53:02.270534+00:00",
+  "project": "demo-shop",
+  "approval_mode": "scripted",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "environments": {
+    "rehearsal": "rehearsal",
+    "target": "demo-target"
+  },
+  "app_variant": "default",
+  "approvals": [
+    {
+      "gate": 1,
+      "environment": "rehearsal",
+      "approved_by": "scripted (validation harness)",
+      "approval_mode": "scripted",
+      "issued_at": "2026-11-27T01:53:02.278093+00:00",
+      "summary": "Write only to rehearsal using <checkout>/.artifacts/run-20261127T015302270534Z/rehearsal.db. Reset and replay the synthetic journey.\nRollback: ('checkout_v2', 'environment_default', 'set_off'); up to 3 proposed writes and baseline restores between attempts.\nBudget: 3 rollbacks + 3 proposals + 4 restoration writes + 1 margin.\nAllowed flags: checkout_v2, cart_compat_reader; scopes: environment_default, segment:vip_users; operations: set_on, set_off, delete_override.",
+      "operations": [],
+      "snapshot_hash": null,
+      "max_operations": 11,
+      "uses": [
+        {
+          "flag": "checkout_v2",
+          "scope": "environment_default",
+          "operation": "set_off",
+          "timestamp": "2026-11-27T01:53:11.327887+00:00"
+        },
+        {
+          "flag": "checkout_v2",
+          "scope": "segment:vip_users",
+          "operation": "delete_override",
+          "timestamp": "2026-11-27T01:53:26.270745+00:00"
+        }
+      ],
+      "closed_at": "2026-11-27T01:53:34.287329+00:00"
+    },
+    {
+      "gate": 2,
+      "environment": "demo-target",
+      "approved_by": "scripted (validation harness)",
+      "approval_mode": "scripted",
+      "issued_at": "2026-11-27T01:53:37.988951+00:00",
+      "summary": "Snapshot hash: 141c5a5d62978c3215c169d1a7addc717f7528f702cf2731a2beb97d533743c2\nExact target operations, in order:\n  1. baseline setup: checkout_v2 / segment:vip_users: set override ON [set_on]\n  2. baseline setup: checkout_v2 / environment_default: set default ON [set_on]\n  3. rollback: checkout_v2 / environment_default: set default OFF [set_off]\n  4. recovery: checkout_v2 / segment:vip_users: delete override (inherit) [delete_override]\nTarget environment: demo-target\nStarting flag state: {'environment': 'demo-target', 'segments': {'vip_users': {'id': 1201561, 'rules': {'$schema': 'https://raw.githubusercontent.com/Flagsmith/flagsmith/main/sdk/evaluation-context.json#/$defs/SegmentRule', 'type': 'ALL', 'conditions': [{'property': 'is_vip', 'operator': 'EQUAL', 'value': 'true'}]}}}, 'flags': {'cart_compat_reader': {'enabled': True, 'value': None, 'segment_overrides': 0, 'identity_overrides': 0, 'overrides': {}, 'identity_overrides_detail': {}}, 'checkout_v2': {'enabled': False, 'value': None, 'segment_overrides': 0, 'identity_overrides': 0, 'overrides': {}, 'identity_overrides_detail': {}}}}\nTarget fixture DB: <checkout>/.artifacts/run-20261127T015302270534Z/target.db\nFixture database writes:\n  - Reset target fixture: create Alice, Carol and Bob with their original v1 carts; clear all fixture orders.\n  - Prepare: save two v2 cart updates each for Alice and Carol; Bob keeps his original cart.\n  - Verify before and after recovery: insert one test order per successful checkout (no order for a failed checkout).\nrecovery runs only if the failure reproduces",
+      "operations": [
+        [
+          "checkout_v2",
+          "segment:vip_users",
+          "set_on"
+        ],
+        [
+          "checkout_v2",
+          "environment_default",
+          "set_on"
+        ],
+        [
+          "checkout_v2",
+          "environment_default",
+          "set_off"
+        ],
+        [
+          "checkout_v2",
+          "segment:vip_users",
+          "delete_override"
+        ]
+      ],
+      "snapshot_hash": "141c5a5d62978c3215c169d1a7addc717f7528f702cf2731a2beb97d533743c2",
+      "max_operations": 0,
+      "uses": [
+        {
+          "flag": "checkout_v2",
+          "scope": "segment:vip_users",
+          "operation": "set_on",
+          "timestamp": "2026-11-27T01:53:45.813220+00:00"
+        },
+        {
+          "flag": "checkout_v2",
+          "scope": "environment_default",
+          "operation": "set_on",
+          "timestamp": "2026-11-27T01:53:58.537928+00:00"
+        },
+        {
+          "flag": "checkout_v2",
+          "scope": "environment_default",
+          "operation": "set_off",
+          "timestamp": "2026-11-27T01:54:15.660862+00:00"
+        },
+        {
+          "flag": "checkout_v2",
+          "scope": "segment:vip_users",
+          "operation": "delete_override",
+          "timestamp": "2026-11-27T01:54:28.922189+00:00"
+        }
+      ],
+      "closed_at": "2026-11-27T01:54:37.635019+00:00"
+    }
+  ],
+  "snapshots": [
+    {
+      "phase": "Rehearsal baseline snapshot",
+      "environment": "rehearsal",
+      "state": {
+        "environment": "rehearsal",
+        "segments": {
+          "vip_users": {
+            "id": 1201561,
+            "rules": {
+              "$schema": "https://raw.githubusercontent.com/Flagsmith/flagsmith/main/sdk/evaluation-context.json#/$defs/SegmentRule",
+              "type": "ALL",
+              "conditions": [
+                {
+                  "property": "is_vip",
+                  "operator": "EQUAL",
+                  "value": "true"
+                }
+              ]
+            }
+          }
+        },
+        "flags": {
+          "cart_compat_reader": {
+            "enabled": true,
+            "value": null,
+            "segment_overrides": 0,
+            "identity_overrides": 0,
+            "overrides": {},
+            "identity_overrides_detail": {}
+          },
+          "checkout_v2": {
+            "enabled": true,
+            "value": null,
+            "segment_overrides": 1,
+            "identity_overrides": 0,
+            "overrides": {
+              "vip_users": {
+                "enabled": true,
+                "priority": 0,
+                "value": null
+              }
+            },
+            "identity_overrides_detail": {}
+          }
+        }
+      },
+      "hash": "cfd2272339d767a13f861cc50ee31ba768988503f3fbc98b0c403e9e22e7d126"
+    },
+    {
+      "phase": "Rehearsal 1: after rollback",
+      "environment": "rehearsal",
+      "state": {
+        "environment": "rehearsal",
+        "segments": {
+          "vip_users": {
+            "id": 1201561,
+            "rules": {
+              "$schema": "https://raw.githubusercontent.com/Flagsmith/flagsmith/main/sdk/evaluation-context.json#/$defs/SegmentRule",
+              "type": "ALL",
+              "conditions": [
+                {
+                  "property": "is_vip",
+                  "operator": "EQUAL",
+                  "value": "true"
+                }
+              ]
+            }
+          }
+        },
+        "flags": {
+          "cart_compat_reader": {
+            "enabled": true,
+            "value": null,
+            "segment_overrides": 0,
+            "identity_overrides": 0,
+            "overrides": {},
+            "identity_overrides_detail": {}
+          },
+          "checkout_v2": {
+            "enabled": false,
+            "value": null,
+            "segment_overrides": 1,
+            "identity_overrides": 0,
+            "overrides": {
+              "vip_users": {
+                "enabled": true,
+                "priority": 0,
+                "value": null
+              }
+            },
+            "identity_overrides_detail": {}
+          }
+        }
+      },
+      "hash": "7be2dc7fdb83224d0cf2083497b485cbfcca35173475d3bcec3b5e48b966e3e8"
+    },
+    {
+      "phase": "Rehearsal 1: candidate configuration",
+      "environment": "rehearsal",
+      "state": {
+        "environment": "rehearsal",
+        "segments": {
+          "vip_users": {
+            "id": 1201561,
+            "rules": {
+              "$schema": "https://raw.githubusercontent.com/Flagsmith/flagsmith/main/sdk/evaluation-context.json#/$defs/SegmentRule",
+              "type": "ALL",
+              "conditions": [
+                {
+                  "property": "is_vip",
+                  "operator": "EQUAL",
+                  "value": "true"
+                }
+              ]
+            }
+          }
+        },
+        "flags": {
+          "cart_compat_reader": {
+            "enabled": true,
+            "value": null,
+            "segment_overrides": 0,
+            "identity_overrides": 0,
+            "overrides": {},
+            "identity_overrides_detail": {}
+          },
+          "checkout_v2": {
+            "enabled": false,
+            "value": null,
+            "segment_overrides": 0,
+            "identity_overrides": 0,
+            "overrides": {},
+            "identity_overrides_detail": {}
+          }
+        }
+      },
+      "hash": "45c35b85c0a4e878c288ac6e0a5631471d0695df8d178f28b5343a93c7a05fcd"
+    },
+    {
+      "phase": "Target starting snapshot",
+      "environment": "demo-target",
+      "state": {
+        "environment": "demo-target",
+        "segments": {
+          "vip_users": {
+            "id": 1201561,
+            "rules": {
+              "$schema": "https://raw.githubusercontent.com/Flagsmith/flagsmith/main/sdk/evaluation-context.json#/$defs/SegmentRule",
+              "type": "ALL",
+              "conditions": [
+                {
+                  "property": "is_vip",
+                  "operator": "EQUAL",
+                  "value": "true"
+                }
+              ]
+            }
+          }
+        },
+        "flags": {
+          "cart_compat_reader": {
+            "enabled": true,
+            "value": null,
+            "segment_overrides": 0,
+            "identity_overrides": 0,
+            "overrides": {},
+            "identity_overrides_detail": {}
+          },
+          "checkout_v2": {
+            "enabled": false,
+            "value": null,
+            "segment_overrides": 0,
+            "identity_overrides": 0,
+            "overrides": {},
+            "identity_overrides_detail": {}
+          }
+        }
+      },
+      "hash": "141c5a5d62978c3215c169d1a7addc717f7528f702cf2731a2beb97d533743c2"
+    }
+  ],
+  "transitions": [
+    {
+      "label": "Rehearsal 1: prepare",
+      "environment": "rehearsal",
+      "timestamp": "2026-11-27T01:53:11.324512+00:00",
+      "expected_flags": {
+        "alice": {
+          "cart_compat_reader": true,
+          "checkout_v2": true
+        },
+        "carol": {
+          "cart_compat_reader": true,
+          "checkout_v2": true
+        },
+        "bob": {
+          "cart_compat_reader": true,
+          "checkout_v2": true
+        }
+      },
+      "ok": true,
+      "phase": "prepare",
+      "exit_code": 0,
+      "summary": "PASS (prepare): 3 users verified cleanly",
+      "steps": [
+        {
+          "name": "eval_prepare",
+          "user": "alice",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "eval_converged_3x",
+              "pass": true,
+              "detail": "3 consecutive matching /eval reads after 3 round(s)"
+            }
+          ]
+        },
+        {
+          "name": "cart_add_1",
+          "user": "alice",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200"
+            },
+            {
+              "name": "prepare_executed_v2",
+              "pass": true,
+              "detail": "executed_version=v2, effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}"
+            }
+          ],
+          "fixture_write": {
+            "kind": "cart_update",
+            "cart_id": "cart-alice",
+            "sku": "coffee",
+            "quantity_added": 1,
+            "schema_version": "v2"
+          }
+        },
+        {
+          "name": "cart_add_2",
+          "user": "alice",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200"
+            },
+            {
+              "name": "prepare_executed_v2",
+              "pass": true,
+              "detail": "executed_version=v2, effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}"
+            }
+          ],
+          "fixture_write": {
+            "kind": "cart_update",
+            "cart_id": "cart-alice",
+            "sku": "croissant",
+            "quantity_added": 1,
+            "schema_version": "v2"
+          }
+        },
+        {
+          "name": "eval_prepare",
+          "user": "carol",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "eval_converged_3x",
+              "pass": true,
+              "detail": "3 consecutive matching /eval reads after 3 round(s)"
+            }
+          ]
+        },
+        {
+          "name": "cart_add_1",
+          "user": "carol",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200"
+            },
+            {
+              "name": "prepare_executed_v2",
+              "pass": true,
+              "detail": "executed_version=v2, effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}"
+            }
+          ],
+          "fixture_write": {
+            "kind": "cart_update",
+            "cart_id": "cart-carol",
+            "sku": "tea",
+            "quantity_added": 2,
+            "schema_version": "v2"
+          }
+        },
+        {
+          "name": "cart_add_2",
+          "user": "carol",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200"
+            },
+            {
+              "name": "prepare_executed_v2",
+              "pass": true,
+              "detail": "executed_version=v2, effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}"
+            }
+          ],
+          "fixture_write": {
+            "kind": "cart_update",
+            "cart_id": "cart-carol",
+            "sku": "muffin",
+            "quantity_added": 1,
+            "schema_version": "v2"
+          }
+        },
+        {
+          "name": "eval_prepare",
+          "user": "bob",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "eval_converged_3x",
+              "pass": true,
+              "detail": "3 consecutive matching /eval reads after 3 round(s)"
+            }
+          ]
+        },
+        {
+          "name": "control_baseline_cart",
+          "user": "bob",
+          "http_status": 200,
+          "executed_version": "none",
+          "effective_flags": {},
+          "assertions": [
+            {
+              "name": "control_v1_baseline_ready",
+              "pass": true,
+              "detail": "status=200, schema=v1"
+            }
+          ]
+        }
+      ],
+      "failed_assertions": [],
+      "user_outcomes": {
+        "alice": {
+          "step": "cart_add_2",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        "carol": {
+          "step": "cart_add_2",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        "bob": {
+          "step": "control_baseline_cart",
+          "http_status": 200,
+          "executed_version": "none",
+          "effective_flags": {}
+        }
+      },
+      "convergence": null,
+      "raw_output": "{\"ok\": true, \"phase\": \"prepare\", \"eval_streak\": 3, \"steps\": [{\"name\": \"eval_prepare\", \"user\": \"alice\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"eval_converged_3x\", \"pass\": true, \"detail\": \"3 consecutive matching /eval reads after 3 round(s)\"}]}, {\"name\": \"cart_add_1\", \"user\": \"alice\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200\"}, {\"name\": \"prepare_executed_v2\", \"pass\": true, \"detail\": \"executed_version=v2, effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}\"}], \"fixture_write\": {\"kind\": \"cart_update\", \"cart_id\": \"cart-alice\", \"sku\": \"coffee\", \"quantity_added\": 1, \"schema_version\": \"v2\"}}, {\"name\": \"cart_add_2\", \"user\": \"alice\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200\"}, {\"name\": \"prepare_executed_v2\", \"pass\": true, \"detail\": \"executed_version=v2, effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}\"}], \"fixture_write\": {\"kind\": \"cart_update\", \"cart_id\": \"cart-alice\", \"sku\": \"croissant\", \"quantity_added\": 1, \"schema_version\": \"v2\"}}, {\"name\": \"eval_prepare\", \"user\": \"carol\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"eval_converged_3x\", \"pass\": true, \"detail\": \"3 consecutive matching /eval reads after 3 round(s)\"}]}, {\"name\": \"cart_add_1\", \"user\": \"carol\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200\"}, {\"name\": \"prepare_executed_v2\", \"pass\": true, \"detail\": \"executed_version=v2, effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}\"}], \"fixture_write\": {\"kind\": \"cart_update\", \"cart_id\": \"cart-carol\", \"sku\": \"tea\", \"quantity_added\": 2, \"schema_version\": \"v2\"}}, {\"name\": \"cart_add_2\", \"user\": \"carol\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200\"}, {\"name\": \"prepare_executed_v2\", \"pass\": true, \"detail\": \"executed_version=v2, effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}\"}], \"fixture_write\": {\"kind\": \"cart_update\", \"cart_id\": \"cart-carol\", \"sku\": \"muffin\", \"quantity_added\": 1, \"schema_version\": \"v2\"}}, {\"name\": \"eval_prepare\", \"user\": \"bob\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"eval_converged_3x\", \"pass\": true, \"detail\": \"3 consecutive matching /eval reads after 3 round(s)\"}]}, {\"name\": \"control_baseline_cart\", \"user\": \"bob\", \"http_status\": 200, \"executed_version\": \"none\", \"effective_flags\": {}, \"assertions\": [{\"name\": \"control_v1_baseline_ready\", \"pass\": true, \"detail\": \"status=200, schema=v1\"}]}]}\n",
+      "stderr": ""
+    },
+    {
+      "label": "Rehearsal 1: verify before recovery",
+      "environment": "rehearsal",
+      "timestamp": "2026-11-27T01:53:21.594447+00:00",
+      "expected_flags": {
+        "alice": {
+          "cart_compat_reader": true,
+          "checkout_v2": true
+        },
+        "carol": {
+          "cart_compat_reader": true,
+          "checkout_v2": true
+        },
+        "bob": {
+          "cart_compat_reader": true,
+          "checkout_v2": false
+        }
+      },
+      "ok": false,
+      "phase": "verify",
+      "exit_code": 1,
+      "summary": "FAIL (verify): 8 failed assertion(s); first=alice/rollback_flag_matches_goal (Expected checkout_v2=False, got True)",
+      "steps": [
+        {
+          "name": "eval_verify",
+          "user": "alice",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "eval_converged_3x",
+              "pass": true,
+              "detail": "3 consecutive matching /eval reads after 3 round(s)"
+            }
+          ]
+        },
+        {
+          "name": "checkout",
+          "user": "alice",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200, error="
+            },
+            {
+              "name": "action_flags_match_expectation",
+              "pass": true,
+              "detail": "expected={'cart_compat_reader': True, 'checkout_v2': True}, action effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}"
+            },
+            {
+              "name": "executed_version_matches_goal",
+              "pass": false,
+              "detail": "expected=legacy, got=v2"
+            },
+            {
+              "name": "effective_flags_match_execution",
+              "pass": true,
+              "detail": "effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=v2"
+            },
+            {
+              "name": "same_customer_and_cart_id",
+              "pass": true,
+              "detail": "expected_cart=cart-alice, got_cart=cart-alice"
+            },
+            {
+              "name": "latest_quantities_survive",
+              "pass": true,
+              "detail": "expected=(3, 1400), got=(3, 1400)"
+            },
+            {
+              "name": "traits_unchanged",
+              "pass": true,
+              "detail": "expected={'is_vip': True}, got={'is_vip': True}"
+            }
+          ],
+          "fixture_write": {
+            "kind": "order_insert",
+            "order_id": "ord-a75e86bf8a",
+            "cart_id": "cart-alice",
+            "total_items": 3,
+            "total_cents": 1400
+          }
+        },
+        {
+          "name": "eval_verify",
+          "user": "carol",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "eval_converged_3x",
+              "pass": true,
+              "detail": "3 consecutive matching /eval reads after 3 round(s)"
+            }
+          ]
+        },
+        {
+          "name": "checkout",
+          "user": "carol",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200, error="
+            },
+            {
+              "name": "action_flags_match_expectation",
+              "pass": true,
+              "detail": "expected={'cart_compat_reader': True, 'checkout_v2': True}, action effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}"
+            },
+            {
+              "name": "executed_version_matches_goal",
+              "pass": false,
+              "detail": "expected=legacy, got=v2"
+            },
+            {
+              "name": "effective_flags_match_execution",
+              "pass": true,
+              "detail": "effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=v2"
+            },
+            {
+              "name": "same_customer_and_cart_id",
+              "pass": true,
+              "detail": "expected_cart=cart-carol, got_cart=cart-carol"
+            },
+            {
+              "name": "latest_quantities_survive",
+              "pass": true,
+              "detail": "expected=(4, 1550), got=(4, 1550)"
+            },
+            {
+              "name": "traits_unchanged",
+              "pass": true,
+              "detail": "expected={'is_vip': True}, got={'is_vip': True}"
+            }
+          ],
+          "fixture_write": {
+            "kind": "order_insert",
+            "order_id": "ord-e6f1856ef0",
+            "cart_id": "cart-carol",
+            "total_items": 4,
+            "total_cents": 1550
+          }
+        },
+        {
+          "name": "eval_verify",
+          "user": "bob",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "eval_converged_3x",
+              "pass": true,
+              "detail": "3 consecutive matching /eval reads after 3 round(s)"
+            }
+          ]
+        },
+        {
+          "name": "checkout",
+          "user": "bob",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200, error="
+            },
+            {
+              "name": "action_flags_match_expectation",
+              "pass": true,
+              "detail": "expected={'cart_compat_reader': True, 'checkout_v2': False}, action effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}"
+            },
+            {
+              "name": "executed_version_matches_goal",
+              "pass": true,
+              "detail": "expected=legacy, got=legacy"
+            },
+            {
+              "name": "effective_flags_match_execution",
+              "pass": true,
+              "detail": "effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=legacy"
+            },
+            {
+              "name": "same_customer_and_cart_id",
+              "pass": true,
+              "detail": "expected_cart=cart-bob, got_cart=cart-bob"
+            },
+            {
+              "name": "latest_quantities_survive",
+              "pass": true,
+              "detail": "expected=(1, 300), got=(1, 300)"
+            },
+            {
+              "name": "traits_unchanged",
+              "pass": true,
+              "detail": "expected={'is_vip': False}, got={'is_vip': False}"
+            },
+            {
+              "name": "control_not_harmed",
+              "pass": true,
+              "detail": "control user bob verified cleanly"
+            }
+          ],
+          "fixture_write": {
+            "kind": "order_insert",
+            "order_id": "ord-d74e6d1b44",
+            "cart_id": "cart-bob",
+            "total_items": 1,
+            "total_cents": 300
+          }
+        }
+      ],
+      "failed_assertions": [
+        {
+          "user": "alice",
+          "step": "eval_verify",
+          "assertion": "rollback_flag_matches_goal",
+          "detail": "Expected checkout_v2=False, got True",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        {
+          "user": "alice",
+          "step": "checkout",
+          "assertion": "rollback_flag_matches_goal",
+          "detail": "Expected checkout_v2=False, got True",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        {
+          "user": "alice",
+          "step": "checkout",
+          "assertion": "direct_executed_version_matches_goal",
+          "detail": "Expected executed_version='legacy', got 'v2'",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        {
+          "user": "alice",
+          "step": "checkout",
+          "assertion": "executed_version_matches_goal",
+          "detail": "expected=legacy, got=v2",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        {
+          "user": "carol",
+          "step": "eval_verify",
+          "assertion": "rollback_flag_matches_goal",
+          "detail": "Expected checkout_v2=False, got True",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        {
+          "user": "carol",
+          "step": "checkout",
+          "assertion": "rollback_flag_matches_goal",
+          "detail": "Expected checkout_v2=False, got True",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        {
+          "user": "carol",
+          "step": "checkout",
+          "assertion": "direct_executed_version_matches_goal",
+          "detail": "Expected executed_version='legacy', got 'v2'",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        {
+          "user": "carol",
+          "step": "checkout",
+          "assertion": "executed_version_matches_goal",
+          "detail": "expected=legacy, got=v2",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        }
+      ],
+      "user_outcomes": {
+        "alice": {
+          "step": "checkout",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        "carol": {
+          "step": "checkout",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        "bob": {
+          "step": "checkout",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        }
+      },
+      "convergence": null,
+      "raw_output": "{\"ok\": false, \"phase\": \"verify\", \"eval_streak\": 3, \"steps\": [{\"name\": \"eval_verify\", \"user\": \"alice\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"eval_converged_3x\", \"pass\": true, \"detail\": \"3 consecutive matching /eval reads after 3 round(s)\"}]}, {\"name\": \"checkout\", \"user\": \"alice\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200, error=\"}, {\"name\": \"action_flags_match_expectation\", \"pass\": true, \"detail\": \"expected={'cart_compat_reader': True, 'checkout_v2': True}, action effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}\"}, {\"name\": \"executed_version_matches_goal\", \"pass\": false, \"detail\": \"expected=legacy, got=v2\"}, {\"name\": \"effective_flags_match_execution\", \"pass\": true, \"detail\": \"effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=v2\"}, {\"name\": \"same_customer_and_cart_id\", \"pass\": true, \"detail\": \"expected_cart=cart-alice, got_cart=cart-alice\"}, {\"name\": \"latest_quantities_survive\", \"pass\": true, \"detail\": \"expected=(3, 1400), got=(3, 1400)\"}, {\"name\": \"traits_unchanged\", \"pass\": true, \"detail\": \"expected={'is_vip': True}, got={'is_vip': True}\"}], \"fixture_write\": {\"kind\": \"order_insert\", \"order_id\": \"ord-a75e86bf8a\", \"cart_id\": \"cart-alice\", \"total_items\": 3, \"total_cents\": 1400}}, {\"name\": \"eval_verify\", \"user\": \"carol\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"eval_converged_3x\", \"pass\": true, \"detail\": \"3 consecutive matching /eval reads after 3 round(s)\"}]}, {\"name\": \"checkout\", \"user\": \"carol\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200, error=\"}, {\"name\": \"action_flags_match_expectation\", \"pass\": true, \"detail\": \"expected={'cart_compat_reader': True, 'checkout_v2': True}, action effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}\"}, {\"name\": \"executed_version_matches_goal\", \"pass\": false, \"detail\": \"expected=legacy, got=v2\"}, {\"name\": \"effective_flags_match_execution\", \"pass\": true, \"detail\": \"effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=v2\"}, {\"name\": \"same_customer_and_cart_id\", \"pass\": true, \"detail\": \"expected_cart=cart-carol, got_cart=cart-carol\"}, {\"name\": \"latest_quantities_survive\", \"pass\": true, \"detail\": \"expected=(4, 1550), got=(4, 1550)\"}, {\"name\": \"traits_unchanged\", \"pass\": true, \"detail\": \"expected={'is_vip': True}, got={'is_vip': True}\"}], \"fixture_write\": {\"kind\": \"order_insert\", \"order_id\": \"ord-e6f1856ef0\", \"cart_id\": \"cart-carol\", \"total_items\": 4, \"total_cents\": 1550}}, {\"name\": \"eval_verify\", \"user\": \"bob\", \"http_status\": 200, \"executed_version\": \"legacy\", \"effective_flags\": {\"checkout_v2\": false, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"eval_converged_3x\", \"pass\": true, \"detail\": \"3 consecutive matching /eval reads after 3 round(s)\"}]}, {\"name\": \"checkout\", \"user\": \"bob\", \"http_status\": 200, \"executed_version\": \"legacy\", \"effective_flags\": {\"checkout_v2\": false, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200, error=\"}, {\"name\": \"action_flags_match_expectation\", \"pass\": true, \"detail\": \"expected={'cart_compat_reader': True, 'checkout_v2': False}, action effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}\"}, {\"name\": \"executed_version_matches_goal\", \"pass\": true, \"detail\": \"expected=legacy, got=legacy\"}, {\"name\": \"effective_flags_match_execution\", \"pass\": true, \"detail\": \"effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=legacy\"}, {\"name\": \"same_customer_and_cart_id\", \"pass\": true, \"detail\": \"expected_cart=cart-bob, got_cart=cart-bob\"}, {\"name\": \"latest_quantities_survive\", \"pass\": true, \"detail\": \"expected=(1, 300), got=(1, 300)\"}, {\"name\": \"traits_unchanged\", \"pass\": true, \"detail\": \"expected={'is_vip': False}, got={'is_vip': False}\"}, {\"name\": \"control_not_harmed\", \"pass\": true, \"detail\": \"control user bob verified cleanly\"}], \"fixture_write\": {\"kind\": \"order_insert\", \"order_id\": \"ord-d74e6d1b44\", \"cart_id\": \"cart-bob\", \"total_items\": 1, \"total_cents\": 300}}]}\n",
+      "stderr": ""
+    },
+    {
+      "label": "Rehearsal 1: verify candidate",
+      "environment": "rehearsal",
+      "timestamp": "2026-11-27T01:53:34.064145+00:00",
+      "expected_flags": {
+        "alice": {
+          "cart_compat_reader": true,
+          "checkout_v2": false
+        },
+        "carol": {
+          "cart_compat_reader": true,
+          "checkout_v2": false
+        },
+        "bob": {
+          "cart_compat_reader": true,
+          "checkout_v2": false
+        }
+      },
+      "ok": true,
+      "phase": "verify",
+      "exit_code": 0,
+      "summary": "PASS (verify): 3 users verified cleanly",
+      "steps": [
+        {
+          "name": "eval_verify",
+          "user": "alice",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "eval_converged_3x",
+              "pass": true,
+              "detail": "3 consecutive matching /eval reads after 3 round(s)"
+            }
+          ]
+        },
+        {
+          "name": "checkout",
+          "user": "alice",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200, error="
+            },
+            {
+              "name": "action_flags_match_expectation",
+              "pass": true,
+              "detail": "expected={'cart_compat_reader': True, 'checkout_v2': False}, action effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}"
+            },
+            {
+              "name": "executed_version_matches_goal",
+              "pass": true,
+              "detail": "expected=legacy, got=legacy"
+            },
+            {
+              "name": "effective_flags_match_execution",
+              "pass": true,
+              "detail": "effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=legacy"
+            },
+            {
+              "name": "same_customer_and_cart_id",
+              "pass": true,
+              "detail": "expected_cart=cart-alice, got_cart=cart-alice"
+            },
+            {
+              "name": "latest_quantities_survive",
+              "pass": true,
+              "detail": "expected=(3, 1400), got=(3, 1400)"
+            },
+            {
+              "name": "traits_unchanged",
+              "pass": true,
+              "detail": "expected={'is_vip': True}, got={'is_vip': True}"
+            }
+          ],
+          "fixture_write": {
+            "kind": "order_insert",
+            "order_id": "ord-425a76c278",
+            "cart_id": "cart-alice",
+            "total_items": 3,
+            "total_cents": 1400
+          }
+        },
+        {
+          "name": "eval_verify",
+          "user": "carol",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "eval_converged_3x",
+              "pass": true,
+              "detail": "3 consecutive matching /eval reads after 3 round(s)"
+            }
+          ]
+        },
+        {
+          "name": "checkout",
+          "user": "carol",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200, error="
+            },
+            {
+              "name": "action_flags_match_expectation",
+              "pass": true,
+              "detail": "expected={'cart_compat_reader': True, 'checkout_v2': False}, action effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}"
+            },
+            {
+              "name": "executed_version_matches_goal",
+              "pass": true,
+              "detail": "expected=legacy, got=legacy"
+            },
+            {
+              "name": "effective_flags_match_execution",
+              "pass": true,
+              "detail": "effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=legacy"
+            },
+            {
+              "name": "same_customer_and_cart_id",
+              "pass": true,
+              "detail": "expected_cart=cart-carol, got_cart=cart-carol"
+            },
+            {
+              "name": "latest_quantities_survive",
+              "pass": true,
+              "detail": "expected=(4, 1550), got=(4, 1550)"
+            },
+            {
+              "name": "traits_unchanged",
+              "pass": true,
+              "detail": "expected={'is_vip': True}, got={'is_vip': True}"
+            }
+          ],
+          "fixture_write": {
+            "kind": "order_insert",
+            "order_id": "ord-e347f3a5a5",
+            "cart_id": "cart-carol",
+            "total_items": 4,
+            "total_cents": 1550
+          }
+        },
+        {
+          "name": "eval_verify",
+          "user": "bob",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "eval_converged_3x",
+              "pass": true,
+              "detail": "3 consecutive matching /eval reads after 3 round(s)"
+            }
+          ]
+        },
+        {
+          "name": "checkout",
+          "user": "bob",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200, error="
+            },
+            {
+              "name": "action_flags_match_expectation",
+              "pass": true,
+              "detail": "expected={'cart_compat_reader': True, 'checkout_v2': False}, action effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}"
+            },
+            {
+              "name": "executed_version_matches_goal",
+              "pass": true,
+              "detail": "expected=legacy, got=legacy"
+            },
+            {
+              "name": "effective_flags_match_execution",
+              "pass": true,
+              "detail": "effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=legacy"
+            },
+            {
+              "name": "same_customer_and_cart_id",
+              "pass": true,
+              "detail": "expected_cart=cart-bob, got_cart=cart-bob"
+            },
+            {
+              "name": "latest_quantities_survive",
+              "pass": true,
+              "detail": "expected=(1, 300), got=(1, 300)"
+            },
+            {
+              "name": "traits_unchanged",
+              "pass": true,
+              "detail": "expected={'is_vip': False}, got={'is_vip': False}"
+            },
+            {
+              "name": "control_not_harmed",
+              "pass": true,
+              "detail": "control user bob verified cleanly"
+            }
+          ],
+          "fixture_write": {
+            "kind": "order_insert",
+            "order_id": "ord-2cb926f775",
+            "cart_id": "cart-bob",
+            "total_items": 1,
+            "total_cents": 300
+          }
+        }
+      ],
+      "failed_assertions": [],
+      "user_outcomes": {
+        "alice": {
+          "step": "checkout",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        "carol": {
+          "step": "checkout",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        "bob": {
+          "step": "checkout",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        }
+      },
+      "convergence": null,
+      "raw_output": "{\"ok\": true, \"phase\": \"verify\", \"eval_streak\": 3, \"steps\": [{\"name\": \"eval_verify\", \"user\": \"alice\", \"http_status\": 200, \"executed_version\": \"legacy\", \"effective_flags\": {\"checkout_v2\": false, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"eval_converged_3x\", \"pass\": true, \"detail\": \"3 consecutive matching /eval reads after 3 round(s)\"}]}, {\"name\": \"checkout\", \"user\": \"alice\", \"http_status\": 200, \"executed_version\": \"legacy\", \"effective_flags\": {\"checkout_v2\": false, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200, error=\"}, {\"name\": \"action_flags_match_expectation\", \"pass\": true, \"detail\": \"expected={'cart_compat_reader': True, 'checkout_v2': False}, action effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}\"}, {\"name\": \"executed_version_matches_goal\", \"pass\": true, \"detail\": \"expected=legacy, got=legacy\"}, {\"name\": \"effective_flags_match_execution\", \"pass\": true, \"detail\": \"effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=legacy\"}, {\"name\": \"same_customer_and_cart_id\", \"pass\": true, \"detail\": \"expected_cart=cart-alice, got_cart=cart-alice\"}, {\"name\": \"latest_quantities_survive\", \"pass\": true, \"detail\": \"expected=(3, 1400), got=(3, 1400)\"}, {\"name\": \"traits_unchanged\", \"pass\": true, \"detail\": \"expected={'is_vip': True}, got={'is_vip': True}\"}], \"fixture_write\": {\"kind\": \"order_insert\", \"order_id\": \"ord-425a76c278\", \"cart_id\": \"cart-alice\", \"total_items\": 3, \"total_cents\": 1400}}, {\"name\": \"eval_verify\", \"user\": \"carol\", \"http_status\": 200, \"executed_version\": \"legacy\", \"effective_flags\": {\"checkout_v2\": false, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"eval_converged_3x\", \"pass\": true, \"detail\": \"3 consecutive matching /eval reads after 3 round(s)\"}]}, {\"name\": \"checkout\", \"user\": \"carol\", \"http_status\": 200, \"executed_version\": \"legacy\", \"effective_flags\": {\"checkout_v2\": false, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200, error=\"}, {\"name\": \"action_flags_match_expectation\", \"pass\": true, \"detail\": \"expected={'cart_compat_reader': True, 'checkout_v2': False}, action effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}\"}, {\"name\": \"executed_version_matches_goal\", \"pass\": true, \"detail\": \"expected=legacy, got=legacy\"}, {\"name\": \"effective_flags_match_execution\", \"pass\": true, \"detail\": \"effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=legacy\"}, {\"name\": \"same_customer_and_cart_id\", \"pass\": true, \"detail\": \"expected_cart=cart-carol, got_cart=cart-carol\"}, {\"name\": \"latest_quantities_survive\", \"pass\": true, \"detail\": \"expected=(4, 1550), got=(4, 1550)\"}, {\"name\": \"traits_unchanged\", \"pass\": true, \"detail\": \"expected={'is_vip': True}, got={'is_vip': True}\"}], \"fixture_write\": {\"kind\": \"order_insert\", \"order_id\": \"ord-e347f3a5a5\", \"cart_id\": \"cart-carol\", \"total_items\": 4, \"total_cents\": 1550}}, {\"name\": \"eval_verify\", \"user\": \"bob\", \"http_status\": 200, \"executed_version\": \"legacy\", \"effective_flags\": {\"checkout_v2\": false, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"eval_converged_3x\", \"pass\": true, \"detail\": \"3 consecutive matching /eval reads after 3 round(s)\"}]}, {\"name\": \"checkout\", \"user\": \"bob\", \"http_status\": 200, \"executed_version\": \"legacy\", \"effective_flags\": {\"checkout_v2\": false, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200, error=\"}, {\"name\": \"action_flags_match_expectation\", \"pass\": true, \"detail\": \"expected={'cart_compat_reader': True, 'checkout_v2': False}, action effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}\"}, {\"name\": \"executed_version_matches_goal\", \"pass\": true, \"detail\": \"expected=legacy, got=legacy\"}, {\"name\": \"effective_flags_match_execution\", \"pass\": true, \"detail\": \"effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=legacy\"}, {\"name\": \"same_customer_and_cart_id\", \"pass\": true, \"detail\": \"expected_cart=cart-bob, got_cart=cart-bob\"}, {\"name\": \"latest_quantities_survive\", \"pass\": true, \"detail\": \"expected=(1, 300), got=(1, 300)\"}, {\"name\": \"traits_unchanged\", \"pass\": true, \"detail\": \"expected={'is_vip': False}, got={'is_vip': False}\"}, {\"name\": \"control_not_harmed\", \"pass\": true, \"detail\": \"control user bob verified cleanly\"}], \"fixture_write\": {\"kind\": \"order_insert\", \"order_id\": \"ord-2cb926f775\", \"cart_id\": \"cart-bob\", \"total_items\": 1, \"total_cents\": 300}}]}\n",
+      "stderr": ""
+    },
+    {
+      "label": "Target: prepare",
+      "environment": "demo-target",
+      "timestamp": "2026-11-27T01:54:08.996443+00:00",
+      "expected_flags": {
+        "alice": {
+          "cart_compat_reader": true,
+          "checkout_v2": true
+        },
+        "carol": {
+          "cart_compat_reader": true,
+          "checkout_v2": true
+        },
+        "bob": {
+          "cart_compat_reader": true,
+          "checkout_v2": true
+        }
+      },
+      "ok": true,
+      "phase": "prepare",
+      "exit_code": 0,
+      "summary": "PASS (prepare): 3 users verified cleanly",
+      "steps": [
+        {
+          "name": "eval_prepare",
+          "user": "alice",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "eval_converged_3x",
+              "pass": true,
+              "detail": "3 consecutive matching /eval reads after 3 round(s)"
+            }
+          ]
+        },
+        {
+          "name": "cart_add_1",
+          "user": "alice",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200"
+            },
+            {
+              "name": "prepare_executed_v2",
+              "pass": true,
+              "detail": "executed_version=v2, effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}"
+            }
+          ],
+          "fixture_write": {
+            "kind": "cart_update",
+            "cart_id": "cart-alice",
+            "sku": "coffee",
+            "quantity_added": 1,
+            "schema_version": "v2"
+          }
+        },
+        {
+          "name": "cart_add_2",
+          "user": "alice",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200"
+            },
+            {
+              "name": "prepare_executed_v2",
+              "pass": true,
+              "detail": "executed_version=v2, effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}"
+            }
+          ],
+          "fixture_write": {
+            "kind": "cart_update",
+            "cart_id": "cart-alice",
+            "sku": "croissant",
+            "quantity_added": 1,
+            "schema_version": "v2"
+          }
+        },
+        {
+          "name": "eval_prepare",
+          "user": "carol",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "eval_converged_3x",
+              "pass": true,
+              "detail": "3 consecutive matching /eval reads after 3 round(s)"
+            }
+          ]
+        },
+        {
+          "name": "cart_add_1",
+          "user": "carol",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200"
+            },
+            {
+              "name": "prepare_executed_v2",
+              "pass": true,
+              "detail": "executed_version=v2, effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}"
+            }
+          ],
+          "fixture_write": {
+            "kind": "cart_update",
+            "cart_id": "cart-carol",
+            "sku": "tea",
+            "quantity_added": 2,
+            "schema_version": "v2"
+          }
+        },
+        {
+          "name": "cart_add_2",
+          "user": "carol",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200"
+            },
+            {
+              "name": "prepare_executed_v2",
+              "pass": true,
+              "detail": "executed_version=v2, effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}"
+            }
+          ],
+          "fixture_write": {
+            "kind": "cart_update",
+            "cart_id": "cart-carol",
+            "sku": "muffin",
+            "quantity_added": 1,
+            "schema_version": "v2"
+          }
+        },
+        {
+          "name": "eval_prepare",
+          "user": "bob",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "eval_converged_3x",
+              "pass": true,
+              "detail": "3 consecutive matching /eval reads after 3 round(s)"
+            }
+          ]
+        },
+        {
+          "name": "control_baseline_cart",
+          "user": "bob",
+          "http_status": 200,
+          "executed_version": "none",
+          "effective_flags": {},
+          "assertions": [
+            {
+              "name": "control_v1_baseline_ready",
+              "pass": true,
+              "detail": "status=200, schema=v1"
+            }
+          ]
+        }
+      ],
+      "failed_assertions": [],
+      "user_outcomes": {
+        "alice": {
+          "step": "cart_add_2",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        "carol": {
+          "step": "cart_add_2",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        "bob": {
+          "step": "control_baseline_cart",
+          "http_status": 200,
+          "executed_version": "none",
+          "effective_flags": {}
+        }
+      },
+      "convergence": null,
+      "raw_output": "{\"ok\": true, \"phase\": \"prepare\", \"eval_streak\": 3, \"steps\": [{\"name\": \"eval_prepare\", \"user\": \"alice\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"eval_converged_3x\", \"pass\": true, \"detail\": \"3 consecutive matching /eval reads after 3 round(s)\"}]}, {\"name\": \"cart_add_1\", \"user\": \"alice\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200\"}, {\"name\": \"prepare_executed_v2\", \"pass\": true, \"detail\": \"executed_version=v2, effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}\"}], \"fixture_write\": {\"kind\": \"cart_update\", \"cart_id\": \"cart-alice\", \"sku\": \"coffee\", \"quantity_added\": 1, \"schema_version\": \"v2\"}}, {\"name\": \"cart_add_2\", \"user\": \"alice\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200\"}, {\"name\": \"prepare_executed_v2\", \"pass\": true, \"detail\": \"executed_version=v2, effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}\"}], \"fixture_write\": {\"kind\": \"cart_update\", \"cart_id\": \"cart-alice\", \"sku\": \"croissant\", \"quantity_added\": 1, \"schema_version\": \"v2\"}}, {\"name\": \"eval_prepare\", \"user\": \"carol\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"eval_converged_3x\", \"pass\": true, \"detail\": \"3 consecutive matching /eval reads after 3 round(s)\"}]}, {\"name\": \"cart_add_1\", \"user\": \"carol\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200\"}, {\"name\": \"prepare_executed_v2\", \"pass\": true, \"detail\": \"executed_version=v2, effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}\"}], \"fixture_write\": {\"kind\": \"cart_update\", \"cart_id\": \"cart-carol\", \"sku\": \"tea\", \"quantity_added\": 2, \"schema_version\": \"v2\"}}, {\"name\": \"cart_add_2\", \"user\": \"carol\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200\"}, {\"name\": \"prepare_executed_v2\", \"pass\": true, \"detail\": \"executed_version=v2, effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}\"}], \"fixture_write\": {\"kind\": \"cart_update\", \"cart_id\": \"cart-carol\", \"sku\": \"muffin\", \"quantity_added\": 1, \"schema_version\": \"v2\"}}, {\"name\": \"eval_prepare\", \"user\": \"bob\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"eval_converged_3x\", \"pass\": true, \"detail\": \"3 consecutive matching /eval reads after 3 round(s)\"}]}, {\"name\": \"control_baseline_cart\", \"user\": \"bob\", \"http_status\": 200, \"executed_version\": \"none\", \"effective_flags\": {}, \"assertions\": [{\"name\": \"control_v1_baseline_ready\", \"pass\": true, \"detail\": \"status=200, schema=v1\"}]}]}\n",
+      "stderr": ""
+    },
+    {
+      "label": "Target: verify before recovery",
+      "environment": "demo-target",
+      "timestamp": "2026-11-27T01:54:24.130098+00:00",
+      "expected_flags": {
+        "alice": {
+          "cart_compat_reader": true,
+          "checkout_v2": true
+        },
+        "carol": {
+          "cart_compat_reader": true,
+          "checkout_v2": true
+        },
+        "bob": {
+          "cart_compat_reader": true,
+          "checkout_v2": false
+        }
+      },
+      "ok": false,
+      "phase": "verify",
+      "exit_code": 1,
+      "summary": "FAIL (verify): 8 failed assertion(s); first=alice/rollback_flag_matches_goal (Expected checkout_v2=False, got True)",
+      "steps": [
+        {
+          "name": "eval_verify",
+          "user": "alice",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "eval_converged_3x",
+              "pass": true,
+              "detail": "3 consecutive matching /eval reads after 3 round(s)"
+            }
+          ]
+        },
+        {
+          "name": "checkout",
+          "user": "alice",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200, error="
+            },
+            {
+              "name": "action_flags_match_expectation",
+              "pass": true,
+              "detail": "expected={'cart_compat_reader': True, 'checkout_v2': True}, action effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}"
+            },
+            {
+              "name": "executed_version_matches_goal",
+              "pass": false,
+              "detail": "expected=legacy, got=v2"
+            },
+            {
+              "name": "effective_flags_match_execution",
+              "pass": true,
+              "detail": "effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=v2"
+            },
+            {
+              "name": "same_customer_and_cart_id",
+              "pass": true,
+              "detail": "expected_cart=cart-alice, got_cart=cart-alice"
+            },
+            {
+              "name": "latest_quantities_survive",
+              "pass": true,
+              "detail": "expected=(3, 1400), got=(3, 1400)"
+            },
+            {
+              "name": "traits_unchanged",
+              "pass": true,
+              "detail": "expected={'is_vip': True}, got={'is_vip': True}"
+            }
+          ],
+          "fixture_write": {
+            "kind": "order_insert",
+            "order_id": "ord-91602a5d5b",
+            "cart_id": "cart-alice",
+            "total_items": 3,
+            "total_cents": 1400
+          }
+        },
+        {
+          "name": "eval_verify",
+          "user": "carol",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "eval_converged_3x",
+              "pass": true,
+              "detail": "3 consecutive matching /eval reads after 3 round(s)"
+            }
+          ]
+        },
+        {
+          "name": "checkout",
+          "user": "carol",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200, error="
+            },
+            {
+              "name": "action_flags_match_expectation",
+              "pass": true,
+              "detail": "expected={'cart_compat_reader': True, 'checkout_v2': True}, action effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}"
+            },
+            {
+              "name": "executed_version_matches_goal",
+              "pass": false,
+              "detail": "expected=legacy, got=v2"
+            },
+            {
+              "name": "effective_flags_match_execution",
+              "pass": true,
+              "detail": "effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=v2"
+            },
+            {
+              "name": "same_customer_and_cart_id",
+              "pass": true,
+              "detail": "expected_cart=cart-carol, got_cart=cart-carol"
+            },
+            {
+              "name": "latest_quantities_survive",
+              "pass": true,
+              "detail": "expected=(4, 1550), got=(4, 1550)"
+            },
+            {
+              "name": "traits_unchanged",
+              "pass": true,
+              "detail": "expected={'is_vip': True}, got={'is_vip': True}"
+            }
+          ],
+          "fixture_write": {
+            "kind": "order_insert",
+            "order_id": "ord-2ba4c44cf8",
+            "cart_id": "cart-carol",
+            "total_items": 4,
+            "total_cents": 1550
+          }
+        },
+        {
+          "name": "eval_verify",
+          "user": "bob",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "eval_converged_3x",
+              "pass": true,
+              "detail": "3 consecutive matching /eval reads after 3 round(s)"
+            }
+          ]
+        },
+        {
+          "name": "checkout",
+          "user": "bob",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200, error="
+            },
+            {
+              "name": "action_flags_match_expectation",
+              "pass": true,
+              "detail": "expected={'cart_compat_reader': True, 'checkout_v2': False}, action effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}"
+            },
+            {
+              "name": "executed_version_matches_goal",
+              "pass": true,
+              "detail": "expected=legacy, got=legacy"
+            },
+            {
+              "name": "effective_flags_match_execution",
+              "pass": true,
+              "detail": "effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=legacy"
+            },
+            {
+              "name": "same_customer_and_cart_id",
+              "pass": true,
+              "detail": "expected_cart=cart-bob, got_cart=cart-bob"
+            },
+            {
+              "name": "latest_quantities_survive",
+              "pass": true,
+              "detail": "expected=(1, 300), got=(1, 300)"
+            },
+            {
+              "name": "traits_unchanged",
+              "pass": true,
+              "detail": "expected={'is_vip': False}, got={'is_vip': False}"
+            },
+            {
+              "name": "control_not_harmed",
+              "pass": true,
+              "detail": "control user bob verified cleanly"
+            }
+          ],
+          "fixture_write": {
+            "kind": "order_insert",
+            "order_id": "ord-6833715e17",
+            "cart_id": "cart-bob",
+            "total_items": 1,
+            "total_cents": 300
+          }
+        }
+      ],
+      "failed_assertions": [
+        {
+          "user": "alice",
+          "step": "eval_verify",
+          "assertion": "rollback_flag_matches_goal",
+          "detail": "Expected checkout_v2=False, got True",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        {
+          "user": "alice",
+          "step": "checkout",
+          "assertion": "rollback_flag_matches_goal",
+          "detail": "Expected checkout_v2=False, got True",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        {
+          "user": "alice",
+          "step": "checkout",
+          "assertion": "direct_executed_version_matches_goal",
+          "detail": "Expected executed_version='legacy', got 'v2'",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        {
+          "user": "alice",
+          "step": "checkout",
+          "assertion": "executed_version_matches_goal",
+          "detail": "expected=legacy, got=v2",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        {
+          "user": "carol",
+          "step": "eval_verify",
+          "assertion": "rollback_flag_matches_goal",
+          "detail": "Expected checkout_v2=False, got True",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        {
+          "user": "carol",
+          "step": "checkout",
+          "assertion": "rollback_flag_matches_goal",
+          "detail": "Expected checkout_v2=False, got True",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        {
+          "user": "carol",
+          "step": "checkout",
+          "assertion": "direct_executed_version_matches_goal",
+          "detail": "Expected executed_version='legacy', got 'v2'",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        {
+          "user": "carol",
+          "step": "checkout",
+          "assertion": "executed_version_matches_goal",
+          "detail": "expected=legacy, got=v2",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        }
+      ],
+      "user_outcomes": {
+        "alice": {
+          "step": "checkout",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        "carol": {
+          "step": "checkout",
+          "http_status": 200,
+          "executed_version": "v2",
+          "effective_flags": {
+            "checkout_v2": true,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        "bob": {
+          "step": "checkout",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        }
+      },
+      "convergence": null,
+      "raw_output": "{\"ok\": false, \"phase\": \"verify\", \"eval_streak\": 3, \"steps\": [{\"name\": \"eval_verify\", \"user\": \"alice\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"eval_converged_3x\", \"pass\": true, \"detail\": \"3 consecutive matching /eval reads after 3 round(s)\"}]}, {\"name\": \"checkout\", \"user\": \"alice\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200, error=\"}, {\"name\": \"action_flags_match_expectation\", \"pass\": true, \"detail\": \"expected={'cart_compat_reader': True, 'checkout_v2': True}, action effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}\"}, {\"name\": \"executed_version_matches_goal\", \"pass\": false, \"detail\": \"expected=legacy, got=v2\"}, {\"name\": \"effective_flags_match_execution\", \"pass\": true, \"detail\": \"effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=v2\"}, {\"name\": \"same_customer_and_cart_id\", \"pass\": true, \"detail\": \"expected_cart=cart-alice, got_cart=cart-alice\"}, {\"name\": \"latest_quantities_survive\", \"pass\": true, \"detail\": \"expected=(3, 1400), got=(3, 1400)\"}, {\"name\": \"traits_unchanged\", \"pass\": true, \"detail\": \"expected={'is_vip': True}, got={'is_vip': True}\"}], \"fixture_write\": {\"kind\": \"order_insert\", \"order_id\": \"ord-91602a5d5b\", \"cart_id\": \"cart-alice\", \"total_items\": 3, \"total_cents\": 1400}}, {\"name\": \"eval_verify\", \"user\": \"carol\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"eval_converged_3x\", \"pass\": true, \"detail\": \"3 consecutive matching /eval reads after 3 round(s)\"}]}, {\"name\": \"checkout\", \"user\": \"carol\", \"http_status\": 200, \"executed_version\": \"v2\", \"effective_flags\": {\"checkout_v2\": true, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200, error=\"}, {\"name\": \"action_flags_match_expectation\", \"pass\": true, \"detail\": \"expected={'cart_compat_reader': True, 'checkout_v2': True}, action effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}\"}, {\"name\": \"executed_version_matches_goal\", \"pass\": false, \"detail\": \"expected=legacy, got=v2\"}, {\"name\": \"effective_flags_match_execution\", \"pass\": true, \"detail\": \"effective_flags={'checkout_v2': True, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=v2\"}, {\"name\": \"same_customer_and_cart_id\", \"pass\": true, \"detail\": \"expected_cart=cart-carol, got_cart=cart-carol\"}, {\"name\": \"latest_quantities_survive\", \"pass\": true, \"detail\": \"expected=(4, 1550), got=(4, 1550)\"}, {\"name\": \"traits_unchanged\", \"pass\": true, \"detail\": \"expected={'is_vip': True}, got={'is_vip': True}\"}], \"fixture_write\": {\"kind\": \"order_insert\", \"order_id\": \"ord-2ba4c44cf8\", \"cart_id\": \"cart-carol\", \"total_items\": 4, \"total_cents\": 1550}}, {\"name\": \"eval_verify\", \"user\": \"bob\", \"http_status\": 200, \"executed_version\": \"legacy\", \"effective_flags\": {\"checkout_v2\": false, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"eval_converged_3x\", \"pass\": true, \"detail\": \"3 consecutive matching /eval reads after 3 round(s)\"}]}, {\"name\": \"checkout\", \"user\": \"bob\", \"http_status\": 200, \"executed_version\": \"legacy\", \"effective_flags\": {\"checkout_v2\": false, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200, error=\"}, {\"name\": \"action_flags_match_expectation\", \"pass\": true, \"detail\": \"expected={'cart_compat_reader': True, 'checkout_v2': False}, action effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}\"}, {\"name\": \"executed_version_matches_goal\", \"pass\": true, \"detail\": \"expected=legacy, got=legacy\"}, {\"name\": \"effective_flags_match_execution\", \"pass\": true, \"detail\": \"effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=legacy\"}, {\"name\": \"same_customer_and_cart_id\", \"pass\": true, \"detail\": \"expected_cart=cart-bob, got_cart=cart-bob\"}, {\"name\": \"latest_quantities_survive\", \"pass\": true, \"detail\": \"expected=(1, 300), got=(1, 300)\"}, {\"name\": \"traits_unchanged\", \"pass\": true, \"detail\": \"expected={'is_vip': False}, got={'is_vip': False}\"}, {\"name\": \"control_not_harmed\", \"pass\": true, \"detail\": \"control user bob verified cleanly\"}], \"fixture_write\": {\"kind\": \"order_insert\", \"order_id\": \"ord-6833715e17\", \"cart_id\": \"cart-bob\", \"total_items\": 1, \"total_cents\": 300}}]}\n",
+      "stderr": ""
+    },
+    {
+      "label": "Target: verify after recovery",
+      "environment": "demo-target",
+      "timestamp": "2026-11-27T01:54:37.389571+00:00",
+      "expected_flags": {
+        "alice": {
+          "cart_compat_reader": true,
+          "checkout_v2": false
+        },
+        "carol": {
+          "cart_compat_reader": true,
+          "checkout_v2": false
+        },
+        "bob": {
+          "cart_compat_reader": true,
+          "checkout_v2": false
+        }
+      },
+      "ok": true,
+      "phase": "verify",
+      "exit_code": 0,
+      "summary": "PASS (verify): 3 users verified cleanly",
+      "steps": [
+        {
+          "name": "eval_verify",
+          "user": "alice",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "eval_converged_3x",
+              "pass": true,
+              "detail": "3 consecutive matching /eval reads after 3 round(s)"
+            }
+          ]
+        },
+        {
+          "name": "checkout",
+          "user": "alice",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200, error="
+            },
+            {
+              "name": "action_flags_match_expectation",
+              "pass": true,
+              "detail": "expected={'cart_compat_reader': True, 'checkout_v2': False}, action effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}"
+            },
+            {
+              "name": "executed_version_matches_goal",
+              "pass": true,
+              "detail": "expected=legacy, got=legacy"
+            },
+            {
+              "name": "effective_flags_match_execution",
+              "pass": true,
+              "detail": "effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=legacy"
+            },
+            {
+              "name": "same_customer_and_cart_id",
+              "pass": true,
+              "detail": "expected_cart=cart-alice, got_cart=cart-alice"
+            },
+            {
+              "name": "latest_quantities_survive",
+              "pass": true,
+              "detail": "expected=(3, 1400), got=(3, 1400)"
+            },
+            {
+              "name": "traits_unchanged",
+              "pass": true,
+              "detail": "expected={'is_vip': True}, got={'is_vip': True}"
+            }
+          ],
+          "fixture_write": {
+            "kind": "order_insert",
+            "order_id": "ord-b54b18c264",
+            "cart_id": "cart-alice",
+            "total_items": 3,
+            "total_cents": 1400
+          }
+        },
+        {
+          "name": "eval_verify",
+          "user": "carol",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "eval_converged_3x",
+              "pass": true,
+              "detail": "3 consecutive matching /eval reads after 3 round(s)"
+            }
+          ]
+        },
+        {
+          "name": "checkout",
+          "user": "carol",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200, error="
+            },
+            {
+              "name": "action_flags_match_expectation",
+              "pass": true,
+              "detail": "expected={'cart_compat_reader': True, 'checkout_v2': False}, action effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}"
+            },
+            {
+              "name": "executed_version_matches_goal",
+              "pass": true,
+              "detail": "expected=legacy, got=legacy"
+            },
+            {
+              "name": "effective_flags_match_execution",
+              "pass": true,
+              "detail": "effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=legacy"
+            },
+            {
+              "name": "same_customer_and_cart_id",
+              "pass": true,
+              "detail": "expected_cart=cart-carol, got_cart=cart-carol"
+            },
+            {
+              "name": "latest_quantities_survive",
+              "pass": true,
+              "detail": "expected=(4, 1550), got=(4, 1550)"
+            },
+            {
+              "name": "traits_unchanged",
+              "pass": true,
+              "detail": "expected={'is_vip': True}, got={'is_vip': True}"
+            }
+          ],
+          "fixture_write": {
+            "kind": "order_insert",
+            "order_id": "ord-9e06420114",
+            "cart_id": "cart-carol",
+            "total_items": 4,
+            "total_cents": 1550
+          }
+        },
+        {
+          "name": "eval_verify",
+          "user": "bob",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "eval_converged_3x",
+              "pass": true,
+              "detail": "3 consecutive matching /eval reads after 3 round(s)"
+            }
+          ]
+        },
+        {
+          "name": "checkout",
+          "user": "bob",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          },
+          "assertions": [
+            {
+              "name": "http_status_200",
+              "pass": true,
+              "detail": "status=200, error="
+            },
+            {
+              "name": "action_flags_match_expectation",
+              "pass": true,
+              "detail": "expected={'cart_compat_reader': True, 'checkout_v2': False}, action effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}"
+            },
+            {
+              "name": "executed_version_matches_goal",
+              "pass": true,
+              "detail": "expected=legacy, got=legacy"
+            },
+            {
+              "name": "effective_flags_match_execution",
+              "pass": true,
+              "detail": "effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=legacy"
+            },
+            {
+              "name": "same_customer_and_cart_id",
+              "pass": true,
+              "detail": "expected_cart=cart-bob, got_cart=cart-bob"
+            },
+            {
+              "name": "latest_quantities_survive",
+              "pass": true,
+              "detail": "expected=(1, 300), got=(1, 300)"
+            },
+            {
+              "name": "traits_unchanged",
+              "pass": true,
+              "detail": "expected={'is_vip': False}, got={'is_vip': False}"
+            },
+            {
+              "name": "control_not_harmed",
+              "pass": true,
+              "detail": "control user bob verified cleanly"
+            }
+          ],
+          "fixture_write": {
+            "kind": "order_insert",
+            "order_id": "ord-e2fc966ae7",
+            "cart_id": "cart-bob",
+            "total_items": 1,
+            "total_cents": 300
+          }
+        }
+      ],
+      "failed_assertions": [],
+      "user_outcomes": {
+        "alice": {
+          "step": "checkout",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        "carol": {
+          "step": "checkout",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        },
+        "bob": {
+          "step": "checkout",
+          "http_status": 200,
+          "executed_version": "legacy",
+          "effective_flags": {
+            "checkout_v2": false,
+            "cart_compat_reader": true,
+            "show_demo_button": false
+          }
+        }
+      },
+      "convergence": null,
+      "raw_output": "{\"ok\": true, \"phase\": \"verify\", \"eval_streak\": 3, \"steps\": [{\"name\": \"eval_verify\", \"user\": \"alice\", \"http_status\": 200, \"executed_version\": \"legacy\", \"effective_flags\": {\"checkout_v2\": false, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"eval_converged_3x\", \"pass\": true, \"detail\": \"3 consecutive matching /eval reads after 3 round(s)\"}]}, {\"name\": \"checkout\", \"user\": \"alice\", \"http_status\": 200, \"executed_version\": \"legacy\", \"effective_flags\": {\"checkout_v2\": false, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200, error=\"}, {\"name\": \"action_flags_match_expectation\", \"pass\": true, \"detail\": \"expected={'cart_compat_reader': True, 'checkout_v2': False}, action effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}\"}, {\"name\": \"executed_version_matches_goal\", \"pass\": true, \"detail\": \"expected=legacy, got=legacy\"}, {\"name\": \"effective_flags_match_execution\", \"pass\": true, \"detail\": \"effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=legacy\"}, {\"name\": \"same_customer_and_cart_id\", \"pass\": true, \"detail\": \"expected_cart=cart-alice, got_cart=cart-alice\"}, {\"name\": \"latest_quantities_survive\", \"pass\": true, \"detail\": \"expected=(3, 1400), got=(3, 1400)\"}, {\"name\": \"traits_unchanged\", \"pass\": true, \"detail\": \"expected={'is_vip': True}, got={'is_vip': True}\"}], \"fixture_write\": {\"kind\": \"order_insert\", \"order_id\": \"ord-b54b18c264\", \"cart_id\": \"cart-alice\", \"total_items\": 3, \"total_cents\": 1400}}, {\"name\": \"eval_verify\", \"user\": \"carol\", \"http_status\": 200, \"executed_version\": \"legacy\", \"effective_flags\": {\"checkout_v2\": false, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"eval_converged_3x\", \"pass\": true, \"detail\": \"3 consecutive matching /eval reads after 3 round(s)\"}]}, {\"name\": \"checkout\", \"user\": \"carol\", \"http_status\": 200, \"executed_version\": \"legacy\", \"effective_flags\": {\"checkout_v2\": false, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200, error=\"}, {\"name\": \"action_flags_match_expectation\", \"pass\": true, \"detail\": \"expected={'cart_compat_reader': True, 'checkout_v2': False}, action effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}\"}, {\"name\": \"executed_version_matches_goal\", \"pass\": true, \"detail\": \"expected=legacy, got=legacy\"}, {\"name\": \"effective_flags_match_execution\", \"pass\": true, \"detail\": \"effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=legacy\"}, {\"name\": \"same_customer_and_cart_id\", \"pass\": true, \"detail\": \"expected_cart=cart-carol, got_cart=cart-carol\"}, {\"name\": \"latest_quantities_survive\", \"pass\": true, \"detail\": \"expected=(4, 1550), got=(4, 1550)\"}, {\"name\": \"traits_unchanged\", \"pass\": true, \"detail\": \"expected={'is_vip': True}, got={'is_vip': True}\"}], \"fixture_write\": {\"kind\": \"order_insert\", \"order_id\": \"ord-9e06420114\", \"cart_id\": \"cart-carol\", \"total_items\": 4, \"total_cents\": 1550}}, {\"name\": \"eval_verify\", \"user\": \"bob\", \"http_status\": 200, \"executed_version\": \"legacy\", \"effective_flags\": {\"checkout_v2\": false, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"eval_converged_3x\", \"pass\": true, \"detail\": \"3 consecutive matching /eval reads after 3 round(s)\"}]}, {\"name\": \"checkout\", \"user\": \"bob\", \"http_status\": 200, \"executed_version\": \"legacy\", \"effective_flags\": {\"checkout_v2\": false, \"cart_compat_reader\": true, \"show_demo_button\": false}, \"assertions\": [{\"name\": \"http_status_200\", \"pass\": true, \"detail\": \"status=200, error=\"}, {\"name\": \"action_flags_match_expectation\", \"pass\": true, \"detail\": \"expected={'cart_compat_reader': True, 'checkout_v2': False}, action effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}\"}, {\"name\": \"executed_version_matches_goal\", \"pass\": true, \"detail\": \"expected=legacy, got=legacy\"}, {\"name\": \"effective_flags_match_execution\", \"pass\": true, \"detail\": \"effective_flags={'checkout_v2': False, 'cart_compat_reader': True, 'show_demo_button': False}, executed_version=legacy\"}, {\"name\": \"same_customer_and_cart_id\", \"pass\": true, \"detail\": \"expected_cart=cart-bob, got_cart=cart-bob\"}, {\"name\": \"latest_quantities_survive\", \"pass\": true, \"detail\": \"expected=(1, 300), got=(1, 300)\"}, {\"name\": \"traits_unchanged\", \"pass\": true, \"detail\": \"expected={'is_vip': False}, got={'is_vip': False}\"}, {\"name\": \"control_not_harmed\", \"pass\": true, \"detail\": \"control user bob verified cleanly\"}], \"fixture_write\": {\"kind\": \"order_insert\", \"order_id\": \"ord-e2fc966ae7\", \"cart_id\": \"cart-bob\", \"total_items\": 1, \"total_cents\": 300}}]}\n",
+      "stderr": ""
+    }
+  ],
+  "attempts": [
+    {
+      "number": 1,
+      "status": "verified",
+      "reason": "PASS (verify): 3 users verified cleanly",
+      "proposal": {
+        "diagnosis": "Segment override for vip_users forces checkout_v2 on, overriding the rollback to off.",
+        "flag": "checkout_v2",
+        "scope": "segment:vip_users",
+        "operation": "delete_override"
+      },
+      "messages": [
+        {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "fc_fecab178-c7bc-4658-bcf0-6c75d9f396e6",
+              "type": "function",
+              "function": {
+                "name": "read_evidence",
+                "arguments": "{}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "name": "read_evidence",
+          "ok": true
+        },
+        {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "fc_66f31479-ff7c-4350-9e52-1c3b9943e15c",
+              "type": "function",
+              "function": {
+                "name": "read_flag_state",
+                "arguments": "{}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "name": "read_flag_state",
+          "ok": true
+        },
+        {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "fc_b6a27e54-7ede-4ab1-b4c6-81da4cec9368",
+              "type": "function",
+              "function": {
+                "name": "propose_operation",
+                "arguments": "{\"diagnosis\":\"Segment override for vip_users forces checkout_v2 on, overriding the rollback to off.\",\"flag\":\"checkout_v2\",\"operation\":\"delete_override\",\"scope\":\"segment:vip_users\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "name": "propose_operation",
+          "ok": false,
+          "error": "Read evidence, flag state and source first"
+        },
+        {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "fc_76665e2b-fc2d-465b-9caf-73091490366c",
+              "type": "function",
+              "function": {
+                "name": "read_source",
+                "arguments": "{\"path\":\"source:1\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "name": "read_source",
+          "ok": true
+        },
+        {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "fc_00d888f4-be6b-4c45-8cfb-053b64594f76",
+              "type": "function",
+              "function": {
+                "name": "propose_operation",
+                "arguments": "{\"diagnosis\":\"Segment override for vip_users forces checkout_v2 on, overriding the rollback to off.\",\"flag\":\"checkout_v2\",\"operation\":\"delete_override\",\"scope\":\"segment:vip_users\"}"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "timings": [
+    {
+      "phase": "Gate 1 rehearsal approval",
+      "seconds": 0.007
+    },
+    {
+      "phase": "Confirm Flagsmith environment binding: rehearsal",
+      "seconds": 0.421
+    },
+    {
+      "phase": "Rehearsal baseline snapshot",
+      "seconds": 4.957
+    },
+    {
+      "phase": "Reset disposable fixture for rehearsal",
+      "seconds": 0.124
+    },
+    {
+      "phase": "Rehearsal 1: prepare",
+      "seconds": 2.807
+    },
+    {
+      "phase": "rehearsal: checkout_v2 / environment_default / set_off",
+      "seconds": 2.308
+    },
+    {
+      "phase": "Rehearsal 1: after rollback",
+      "seconds": 5.572
+    },
+    {
+      "phase": "Rehearsal 1: verify before recovery",
+      "seconds": 2.389
+    },
+    {
+      "phase": "Agent diagnosis 1",
+      "seconds": 4.665
+    },
+    {
+      "phase": "rehearsal: checkout_v2 / segment:vip_users / delete_override",
+      "seconds": 3.153
+    },
+    {
+      "phase": "Rehearsal 1: candidate configuration",
+      "seconds": 3.153
+    },
+    {
+      "phase": "Rehearsal 1: verify candidate",
+      "seconds": 2.359
+    },
+    {
+      "phase": "Confirm Flagsmith environment binding: demo-target",
+      "seconds": 0.484
+    },
+    {
+      "phase": "Target starting snapshot",
+      "seconds": 3.214
+    },
+    {
+      "phase": "Gate 2 exact target approval",
+      "seconds": 0.001
+    },
+    {
+      "phase": "demo-target: checkout_v2 / segment:vip_users / set_on",
+      "seconds": 10.536
+    },
+    {
+      "phase": "demo-target: checkout_v2 / environment_default / set_on",
+      "seconds": 11.931
+    },
+    {
+      "phase": "Reset disposable fixture for demo-target",
+      "seconds": 0.176
+    },
+    {
+      "phase": "Target: prepare",
+      "seconds": 3.072
+    },
+    {
+      "phase": "demo-target: checkout_v2 / environment_default / set_off",
+      "seconds": 12.728
+    },
+    {
+      "phase": "Target: verify before recovery",
+      "seconds": 2.367
+    },
+    {
+      "phase": "demo-target: checkout_v2 / segment:vip_users / delete_override",
+      "seconds": 11.741
+    },
+    {
+      "phase": "Target: verify after recovery",
+      "seconds": 2.501
+    }
+  ],
+  "changes": [
+    {
+      "kind": "fixture_reset",
+      "environment": "rehearsal",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/rehearsal.db",
+      "timestamp": "2026-11-27T01:53:07.657649+00:00",
+      "status": "completed"
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "rehearsal",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/rehearsal.db",
+      "user": "alice",
+      "step": "cart_add_1",
+      "details": {
+        "kind": "cart_update",
+        "cart_id": "cart-alice",
+        "sku": "coffee",
+        "quantity_added": 1,
+        "schema_version": "v2"
+      },
+      "timestamp": "2026-11-27T01:53:11.324790+00:00"
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "rehearsal",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/rehearsal.db",
+      "user": "alice",
+      "step": "cart_add_2",
+      "details": {
+        "kind": "cart_update",
+        "cart_id": "cart-alice",
+        "sku": "croissant",
+        "quantity_added": 1,
+        "schema_version": "v2"
+      },
+      "timestamp": "2026-11-27T01:53:11.324823+00:00"
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "rehearsal",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/rehearsal.db",
+      "user": "carol",
+      "step": "cart_add_1",
+      "details": {
+        "kind": "cart_update",
+        "cart_id": "cart-carol",
+        "sku": "tea",
+        "quantity_added": 2,
+        "schema_version": "v2"
+      },
+      "timestamp": "2026-11-27T01:53:11.324827+00:00"
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "rehearsal",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/rehearsal.db",
+      "user": "carol",
+      "step": "cart_add_2",
+      "details": {
+        "kind": "cart_update",
+        "cart_id": "cart-carol",
+        "sku": "muffin",
+        "quantity_added": 1,
+        "schema_version": "v2"
+      },
+      "timestamp": "2026-11-27T01:53:11.324832+00:00"
+    },
+    {
+      "kind": "flag",
+      "environment": "rehearsal",
+      "flag": "checkout_v2",
+      "scope": "environment_default",
+      "operation": "set_off",
+      "timestamp": "2026-11-27T01:53:11.327700+00:00",
+      "status": "applied",
+      "command": "flagsmith flag update checkout_v2 --disable --environment <REDACTED> --yes",
+      "duration_ms": 2308.022
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "rehearsal",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/rehearsal.db",
+      "user": "alice",
+      "step": "checkout",
+      "details": {
+        "kind": "order_insert",
+        "order_id": "ord-a75e86bf8a",
+        "cart_id": "cart-alice",
+        "total_items": 3,
+        "total_cents": 1400
+      },
+      "timestamp": "2026-11-27T01:53:21.594685+00:00"
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "rehearsal",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/rehearsal.db",
+      "user": "carol",
+      "step": "checkout",
+      "details": {
+        "kind": "order_insert",
+        "order_id": "ord-e6f1856ef0",
+        "cart_id": "cart-carol",
+        "total_items": 4,
+        "total_cents": 1550
+      },
+      "timestamp": "2026-11-27T01:53:21.594691+00:00"
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "rehearsal",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/rehearsal.db",
+      "user": "bob",
+      "step": "checkout",
+      "details": {
+        "kind": "order_insert",
+        "order_id": "ord-d74e6d1b44",
+        "cart_id": "cart-bob",
+        "total_items": 1,
+        "total_cents": 300
+      },
+      "timestamp": "2026-11-27T01:53:21.594693+00:00"
+    },
+    {
+      "kind": "flag",
+      "environment": "rehearsal",
+      "flag": "checkout_v2",
+      "scope": "segment:vip_users",
+      "operation": "delete_override",
+      "timestamp": "2026-11-27T01:53:26.270485+00:00",
+      "status": "applied",
+      "command": "flagsmith flag delete checkout_v2 --segment vip_users --environment <REDACTED> --yes",
+      "duration_ms": 3153.013
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "rehearsal",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/rehearsal.db",
+      "user": "alice",
+      "step": "checkout",
+      "details": {
+        "kind": "order_insert",
+        "order_id": "ord-425a76c278",
+        "cart_id": "cart-alice",
+        "total_items": 3,
+        "total_cents": 1400
+      },
+      "timestamp": "2026-11-27T01:53:34.064276+00:00"
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "rehearsal",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/rehearsal.db",
+      "user": "carol",
+      "step": "checkout",
+      "details": {
+        "kind": "order_insert",
+        "order_id": "ord-e347f3a5a5",
+        "cart_id": "cart-carol",
+        "total_items": 4,
+        "total_cents": 1550
+      },
+      "timestamp": "2026-11-27T01:53:34.064280+00:00"
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "rehearsal",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/rehearsal.db",
+      "user": "bob",
+      "step": "checkout",
+      "details": {
+        "kind": "order_insert",
+        "order_id": "ord-2cb926f775",
+        "cart_id": "cart-bob",
+        "total_items": 1,
+        "total_cents": 300
+      },
+      "timestamp": "2026-11-27T01:53:34.064283+00:00"
+    },
+    {
+      "kind": "flag",
+      "environment": "demo-target",
+      "flag": "checkout_v2",
+      "scope": "segment:vip_users",
+      "operation": "set_on",
+      "timestamp": "2026-11-27T01:53:43.497192+00:00",
+      "status": "applied",
+      "command": "flagsmith flag update checkout_v2 --enable --segment vip_users --environment <REDACTED> --yes",
+      "duration_ms": 2411.422
+    },
+    {
+      "kind": "flag",
+      "environment": "demo-target",
+      "flag": "checkout_v2",
+      "scope": "environment_default",
+      "operation": "set_on",
+      "timestamp": "2026-11-27T01:53:54.064647+00:00",
+      "status": "applied",
+      "command": "flagsmith flag update checkout_v2 --enable --environment <REDACTED> --yes",
+      "duration_ms": 1762.64
+    },
+    {
+      "kind": "fixture_reset",
+      "environment": "demo-target",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/target.db",
+      "timestamp": "2026-11-27T01:54:05.136080+00:00",
+      "status": "completed"
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "demo-target",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/target.db",
+      "user": "alice",
+      "step": "cart_add_1",
+      "details": {
+        "kind": "cart_update",
+        "cart_id": "cart-alice",
+        "sku": "coffee",
+        "quantity_added": 1,
+        "schema_version": "v2"
+      },
+      "timestamp": "2026-11-27T01:54:08.996763+00:00"
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "demo-target",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/target.db",
+      "user": "alice",
+      "step": "cart_add_2",
+      "details": {
+        "kind": "cart_update",
+        "cart_id": "cart-alice",
+        "sku": "croissant",
+        "quantity_added": 1,
+        "schema_version": "v2"
+      },
+      "timestamp": "2026-11-27T01:54:08.996774+00:00"
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "demo-target",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/target.db",
+      "user": "carol",
+      "step": "cart_add_1",
+      "details": {
+        "kind": "cart_update",
+        "cart_id": "cart-carol",
+        "sku": "tea",
+        "quantity_added": 2,
+        "schema_version": "v2"
+      },
+      "timestamp": "2026-11-27T01:54:08.996781+00:00"
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "demo-target",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/target.db",
+      "user": "carol",
+      "step": "cart_add_2",
+      "details": {
+        "kind": "cart_update",
+        "cart_id": "cart-carol",
+        "sku": "muffin",
+        "quantity_added": 1,
+        "schema_version": "v2"
+      },
+      "timestamp": "2026-11-27T01:54:08.996788+00:00"
+    },
+    {
+      "kind": "flag",
+      "environment": "demo-target",
+      "flag": "checkout_v2",
+      "scope": "environment_default",
+      "operation": "set_off",
+      "timestamp": "2026-11-27T01:54:09.036211+00:00",
+      "status": "applied",
+      "command": "flagsmith flag update checkout_v2 --disable --environment <REDACTED> --yes",
+      "duration_ms": 1262.768
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "demo-target",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/target.db",
+      "user": "alice",
+      "step": "checkout",
+      "details": {
+        "kind": "order_insert",
+        "order_id": "ord-91602a5d5b",
+        "cart_id": "cart-alice",
+        "total_items": 3,
+        "total_cents": 1400
+      },
+      "timestamp": "2026-11-27T01:54:24.130392+00:00"
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "demo-target",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/target.db",
+      "user": "carol",
+      "step": "checkout",
+      "details": {
+        "kind": "order_insert",
+        "order_id": "ord-2ba4c44cf8",
+        "cart_id": "cart-carol",
+        "total_items": 4,
+        "total_cents": 1550
+      },
+      "timestamp": "2026-11-27T01:54:24.130397+00:00"
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "demo-target",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/target.db",
+      "user": "bob",
+      "step": "checkout",
+      "details": {
+        "kind": "order_insert",
+        "order_id": "ord-6833715e17",
+        "cart_id": "cart-bob",
+        "total_items": 1,
+        "total_cents": 300
+      },
+      "timestamp": "2026-11-27T01:54:24.130400+00:00"
+    },
+    {
+      "kind": "flag",
+      "environment": "demo-target",
+      "flag": "checkout_v2",
+      "scope": "segment:vip_users",
+      "operation": "delete_override",
+      "timestamp": "2026-11-27T01:54:24.149502+00:00",
+      "status": "applied",
+      "command": "flagsmith flag delete checkout_v2 --segment vip_users --environment <REDACTED> --yes",
+      "duration_ms": 3156.691
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "demo-target",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/target.db",
+      "user": "alice",
+      "step": "checkout",
+      "details": {
+        "kind": "order_insert",
+        "order_id": "ord-b54b18c264",
+        "cart_id": "cart-alice",
+        "total_items": 3,
+        "total_cents": 1400
+      },
+      "timestamp": "2026-11-27T01:54:37.389743+00:00"
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "demo-target",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/target.db",
+      "user": "carol",
+      "step": "checkout",
+      "details": {
+        "kind": "order_insert",
+        "order_id": "ord-9e06420114",
+        "cart_id": "cart-carol",
+        "total_items": 4,
+        "total_cents": 1550
+      },
+      "timestamp": "2026-11-27T01:54:37.389748+00:00"
+    },
+    {
+      "kind": "fixture_write",
+      "environment": "demo-target",
+      "db_path": "<checkout>/.artifacts/run-20261127T015302270534Z/target.db",
+      "user": "bob",
+      "step": "checkout",
+      "details": {
+        "kind": "order_insert",
+        "order_id": "ord-e2fc966ae7",
+        "cart_id": "cart-bob",
+        "total_items": 1,
+        "total_cents": 300
+      },
+      "timestamp": "2026-11-27T01:54:37.389751+00:00"
+    }
+  ],
+  "target_failure_reproduced": true,
+  "finished_at": "2026-11-27T01:54:37.636032+00:00",
+  "elapsed_seconds": 98.122,
+  "llm_calls": [
+    {
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "latency_ms": 848.816,
+      "prompt_tokens": 594,
+      "completion_tokens": 49,
+      "outcome": "ok",
+      "http_status": 200,
+      "retry_wait_seconds": 0.0,
+      "provider_message": null
+    },
+    {
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "latency_ms": 846.817,
+      "prompt_tokens": 903,
+      "completion_tokens": 81,
+      "outcome": "ok",
+      "http_status": 200,
+      "retry_wait_seconds": 0.0,
+      "provider_message": null
+    },
+    {
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "latency_ms": 1089.991,
+      "prompt_tokens": 1031,
+      "completion_tokens": 256,
+      "outcome": "ok",
+      "http_status": 200,
+      "retry_wait_seconds": 0.0,
+      "provider_message": null
+    },
+    {
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "latency_ms": 606.457,
+      "prompt_tokens": 1110,
+      "completion_tokens": 44,
+      "outcome": "ok",
+      "http_status": 200,
+      "retry_wait_seconds": 0.0,
+      "provider_message": null
+    },
+    {
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "latency_ms": 1257.077,
+      "prompt_tokens": 1641,
+      "completion_tokens": 198,
+      "outcome": "ok",
+      "http_status": 200,
+      "retry_wait_seconds": 0.0,
+      "provider_message": null
+    }
+  ],
+  "flagsmith_command_log": [
+    {
+      "command": "flagsmith environment list --json",
+      "exit_code": 0,
+      "duration_ms": 420.43,
+      "stdout": "[\n  {\n    \"id\": 118579,\n    \"uuid\": \"14b90adf-e8b0-4e90-bad1-414fa7a0a586\",\n    \"name\": \"rehearsal\",\n    \"api_key\": \"<REDACTED>\",\n    \"description\": null,\n    \"project\": 55311,\n    \"minimum_change_request_approvals\": null,\n    \"allow_client_traits\": true,\n    \"banner_text\": null,\n    \"banner_colour\": null,\n    \"hide_disabled_flags\": null,\n    \"use_mv_v2_evaluation\": true,\n    \"use_identity_composite_key_for_hashing\": true,\n    \"hide_sensitive_data\": false,\n    \"use_v2_feature_versioning\": true,\n    \"use_identity_overrides_in_local_eval\": true,\n    \"is_creating\": false,\n    \"metadata\": []\n  },\n  {\n    \"id\": 118580,\n    \"uuid\": \"6b11072e-750a-4303-a4c6-f0dea0ed93b0\",\n    \"name\": \"demo-target\",\n    \"api_key\": \"<REDACTED>\",\n    \"description\": null,\n    \"project\": 55311,\n    \"minimum_change_request_approvals\": null,\n    \"allow_client_traits\": true,\n    \"banner_text\": null,\n    \"banner_colour\": null,\n    \"hide_disabled_flags\": null,\n    \"use_mv_v2_evaluation\": true,\n    \"use_identity_composite_key_for_hashing\": true,\n    \"hide_sensitive_data\": false,\n    \"use_v2_feature_versioning\": true,\n    \"use_identity_overrides_in_local_eval\": true,\n    \"is_creating\": false,\n    \"metadata\": []\n  }\n]",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith segment list --json",
+      "exit_code": 0,
+      "duration_ms": 1046.139,
+      "stdout": "[\n  {\n    \"id\": 1201561,\n    \"name\": \"vip_users\",\n    \"rules\": {\n      \"$schema\": \"https://raw.githubusercontent.com/Flagsmith/flagsmith/main/sdk/evaluation-context.json#/$defs/SegmentRule\",\n      \"type\": \"ALL\",\n      \"conditions\": [\n        {\n          \"property\": \"is_vip\",\n          \"operator\": \"EQUAL\",\n          \"value\": \"true\"\n        }\n      ]\n    }\n  }\n]",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get cart_compat_reader --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 1241.718,
+      "stdout": "{\n  \"feature\": \"cart_compat_reader\",\n  \"type\": \"standard\",\n  \"description\": \"Backward-compatible cart reader\",\n  \"enabled\": true,\n  \"value\": null,\n  \"segment_overrides\": 0,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 839.576,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"description\": \"Checkout V2 redesign\",\n  \"enabled\": true,\n  \"value\": null,\n  \"segment_overrides\": 1,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --segment vip_users --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 1827.958,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"segment\": {\n    \"id\": 1201561,\n    \"name\": \"vip_users\"\n  },\n  \"priority\": 0,\n  \"enabled\": true,\n  \"value\": null\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag update checkout_v2 --disable --environment <REDACTED> --yes",
+      "exit_code": 0,
+      "duration_ms": 2308.022,
+      "stdout": "Feature              checkout_v2\nDescription          Checkout V2 redesign\nType                 standard\nState                off\nValue                -\nSegment overrides    1\nIdentity overrides   0\nCode references      0\nLifecycle stage      new",
+      "stderr": "✓ Disabled checkout_v2 in environment rehearsal (<REDACTED>)"
+    },
+    {
+      "command": "flagsmith segment list --json",
+      "exit_code": 0,
+      "duration_ms": 759.336,
+      "stdout": "[\n  {\n    \"id\": 1201561,\n    \"name\": \"vip_users\",\n    \"rules\": {\n      \"$schema\": \"https://raw.githubusercontent.com/Flagsmith/flagsmith/main/sdk/evaluation-context.json#/$defs/SegmentRule\",\n      \"type\": \"ALL\",\n      \"conditions\": [\n        {\n          \"property\": \"is_vip\",\n          \"operator\": \"EQUAL\",\n          \"value\": \"true\"\n        }\n      ]\n    }\n  }\n]",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get cart_compat_reader --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 1342.246,
+      "stdout": "{\n  \"feature\": \"cart_compat_reader\",\n  \"type\": \"standard\",\n  \"description\": \"Backward-compatible cart reader\",\n  \"enabled\": true,\n  \"value\": null,\n  \"segment_overrides\": 0,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 1053.269,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"description\": \"Checkout V2 redesign\",\n  \"enabled\": false,\n  \"value\": null,\n  \"segment_overrides\": 1,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --segment vip_users --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 2415.598,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"segment\": {\n    \"id\": 1201561,\n    \"name\": \"vip_users\"\n  },\n  \"priority\": 0,\n  \"enabled\": true,\n  \"value\": null\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag delete checkout_v2 --segment vip_users --environment <REDACTED> --yes",
+      "exit_code": 0,
+      "duration_ms": 3153.013,
+      "stdout": "",
+      "stderr": "✓ Deleted checkout_v2 override for segment vip_users (1201561) in environment rehearsal (<REDACTED>)"
+    },
+    {
+      "command": "flagsmith segment list --json",
+      "exit_code": 0,
+      "duration_ms": 515.289,
+      "stdout": "[\n  {\n    \"id\": 1201561,\n    \"name\": \"vip_users\",\n    \"rules\": {\n      \"$schema\": \"https://raw.githubusercontent.com/Flagsmith/flagsmith/main/sdk/evaluation-context.json#/$defs/SegmentRule\",\n      \"type\": \"ALL\",\n      \"conditions\": [\n        {\n          \"property\": \"is_vip\",\n          \"operator\": \"EQUAL\",\n          \"value\": \"true\"\n        }\n      ]\n    }\n  }\n]",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get cart_compat_reader --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 1851.719,
+      "stdout": "{\n  \"feature\": \"cart_compat_reader\",\n  \"type\": \"standard\",\n  \"description\": \"Backward-compatible cart reader\",\n  \"enabled\": true,\n  \"value\": null,\n  \"segment_overrides\": 0,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 785.407,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"description\": \"Checkout V2 redesign\",\n  \"enabled\": false,\n  \"value\": null,\n  \"segment_overrides\": 0,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith environment list --json",
+      "exit_code": 0,
+      "duration_ms": 483.622,
+      "stdout": "[\n  {\n    \"id\": 118579,\n    \"uuid\": \"14b90adf-e8b0-4e90-bad1-414fa7a0a586\",\n    \"name\": \"rehearsal\",\n    \"api_key\": \"<REDACTED>\",\n    \"description\": null,\n    \"project\": 55311,\n    \"minimum_change_request_approvals\": null,\n    \"allow_client_traits\": true,\n    \"banner_text\": null,\n    \"banner_colour\": null,\n    \"hide_disabled_flags\": null,\n    \"use_mv_v2_evaluation\": true,\n    \"use_identity_composite_key_for_hashing\": true,\n    \"hide_sensitive_data\": false,\n    \"use_v2_feature_versioning\": true,\n    \"use_identity_overrides_in_local_eval\": true,\n    \"is_creating\": false,\n    \"metadata\": []\n  },\n  {\n    \"id\": 118580,\n    \"uuid\": \"6b11072e-750a-4303-a4c6-f0dea0ed93b0\",\n    \"name\": \"demo-target\",\n    \"api_key\": \"<REDACTED>\",\n    \"description\": null,\n    \"project\": 55311,\n    \"minimum_change_request_approvals\": null,\n    \"allow_client_traits\": true,\n    \"banner_text\": null,\n    \"banner_colour\": null,\n    \"hide_disabled_flags\": null,\n    \"use_mv_v2_evaluation\": true,\n    \"use_identity_composite_key_for_hashing\": true,\n    \"hide_sensitive_data\": false,\n    \"use_v2_feature_versioning\": true,\n    \"use_identity_overrides_in_local_eval\": true,\n    \"is_creating\": false,\n    \"metadata\": []\n  }\n]",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith segment list --json",
+      "exit_code": 0,
+      "duration_ms": 482.485,
+      "stdout": "[\n  {\n    \"id\": 1201561,\n    \"name\": \"vip_users\",\n    \"rules\": {\n      \"$schema\": \"https://raw.githubusercontent.com/Flagsmith/flagsmith/main/sdk/evaluation-context.json#/$defs/SegmentRule\",\n      \"type\": \"ALL\",\n      \"conditions\": [\n        {\n          \"property\": \"is_vip\",\n          \"operator\": \"EQUAL\",\n          \"value\": \"true\"\n        }\n      ]\n    }\n  }\n]",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get cart_compat_reader --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 1928.048,
+      "stdout": "{\n  \"feature\": \"cart_compat_reader\",\n  \"type\": \"standard\",\n  \"description\": \"Backward-compatible cart reader\",\n  \"enabled\": true,\n  \"value\": null,\n  \"segment_overrides\": 0,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 801.856,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"description\": \"Checkout V2 redesign\",\n  \"enabled\": false,\n  \"value\": null,\n  \"segment_overrides\": 0,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith segment list --json",
+      "exit_code": 0,
+      "duration_ms": 2941.904,
+      "stdout": "[\n  {\n    \"id\": 1201561,\n    \"name\": \"vip_users\",\n    \"rules\": {\n      \"$schema\": \"https://raw.githubusercontent.com/Flagsmith/flagsmith/main/sdk/evaluation-context.json#/$defs/SegmentRule\",\n      \"type\": \"ALL\",\n      \"conditions\": [\n        {\n          \"property\": \"is_vip\",\n          \"operator\": \"EQUAL\",\n          \"value\": \"true\"\n        }\n      ]\n    }\n  }\n]",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get cart_compat_reader --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 1508.782,
+      "stdout": "{\n  \"feature\": \"cart_compat_reader\",\n  \"type\": \"standard\",\n  \"description\": \"Backward-compatible cart reader\",\n  \"enabled\": true,\n  \"value\": null,\n  \"segment_overrides\": 0,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 1049.664,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"description\": \"Checkout V2 redesign\",\n  \"enabled\": false,\n  \"value\": null,\n  \"segment_overrides\": 0,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith segment list --json",
+      "exit_code": 0,
+      "duration_ms": 449.103,
+      "stdout": "[\n  {\n    \"id\": 1201561,\n    \"name\": \"vip_users\",\n    \"rules\": {\n      \"$schema\": \"https://raw.githubusercontent.com/Flagsmith/flagsmith/main/sdk/evaluation-context.json#/$defs/SegmentRule\",\n      \"type\": \"ALL\",\n      \"conditions\": [\n        {\n          \"property\": \"is_vip\",\n          \"operator\": \"EQUAL\",\n          \"value\": \"true\"\n        }\n      ]\n    }\n  }\n]",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get cart_compat_reader --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 1025.351,
+      "stdout": "{\n  \"feature\": \"cart_compat_reader\",\n  \"type\": \"standard\",\n  \"description\": \"Backward-compatible cart reader\",\n  \"enabled\": true,\n  \"value\": null,\n  \"segment_overrides\": 0,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 839.715,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"description\": \"Checkout V2 redesign\",\n  \"enabled\": false,\n  \"value\": null,\n  \"segment_overrides\": 0,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag update checkout_v2 --enable --segment vip_users --environment <REDACTED> --yes",
+      "exit_code": 0,
+      "duration_ms": 2411.422,
+      "stdout": "Feature    checkout_v2\nType       standard\nSegment    vip_users (1201561)\nPriority   0\nState      on\nValue      -",
+      "stderr": "✓ Enabled checkout_v2 for segment vip_users (1201561) in environment demo-target (<REDACTED>)"
+    },
+    {
+      "command": "flagsmith segment list --json",
+      "exit_code": 0,
+      "duration_ms": 746.948,
+      "stdout": "[\n  {\n    \"id\": 1201561,\n    \"name\": \"vip_users\",\n    \"rules\": {\n      \"$schema\": \"https://raw.githubusercontent.com/Flagsmith/flagsmith/main/sdk/evaluation-context.json#/$defs/SegmentRule\",\n      \"type\": \"ALL\",\n      \"conditions\": [\n        {\n          \"property\": \"is_vip\",\n          \"operator\": \"EQUAL\",\n          \"value\": \"true\"\n        }\n      ]\n    }\n  }\n]",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get cart_compat_reader --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 881.415,
+      "stdout": "{\n  \"feature\": \"cart_compat_reader\",\n  \"type\": \"standard\",\n  \"description\": \"Backward-compatible cart reader\",\n  \"enabled\": true,\n  \"value\": null,\n  \"segment_overrides\": 0,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 1898.434,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"description\": \"Checkout V2 redesign\",\n  \"enabled\": false,\n  \"value\": null,\n  \"segment_overrides\": 1,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --segment vip_users --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 2275.729,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"segment\": {\n    \"id\": 1201561,\n    \"name\": \"vip_users\"\n  },\n  \"priority\": 0,\n  \"enabled\": true,\n  \"value\": null\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith segment list --json",
+      "exit_code": 0,
+      "duration_ms": 804.094,
+      "stdout": "[\n  {\n    \"id\": 1201561,\n    \"name\": \"vip_users\",\n    \"rules\": {\n      \"$schema\": \"https://raw.githubusercontent.com/Flagsmith/flagsmith/main/sdk/evaluation-context.json#/$defs/SegmentRule\",\n      \"type\": \"ALL\",\n      \"conditions\": [\n        {\n          \"property\": \"is_vip\",\n          \"operator\": \"EQUAL\",\n          \"value\": \"true\"\n        }\n      ]\n    }\n  }\n]",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get cart_compat_reader --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 1468.864,
+      "stdout": "{\n  \"feature\": \"cart_compat_reader\",\n  \"type\": \"standard\",\n  \"description\": \"Backward-compatible cart reader\",\n  \"enabled\": true,\n  \"value\": null,\n  \"segment_overrides\": 0,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 960.26,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"description\": \"Checkout V2 redesign\",\n  \"enabled\": false,\n  \"value\": null,\n  \"segment_overrides\": 1,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --segment vip_users --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 2123.081,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"segment\": {\n    \"id\": 1201561,\n    \"name\": \"vip_users\"\n  },\n  \"priority\": 0,\n  \"enabled\": true,\n  \"value\": null\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag update checkout_v2 --enable --environment <REDACTED> --yes",
+      "exit_code": 0,
+      "duration_ms": 1762.64,
+      "stdout": "Feature              checkout_v2\nDescription          Checkout V2 redesign\nType                 standard\nState                on\nValue                -\nSegment overrides    1\nIdentity overrides   0\nCode references      0\nLifecycle stage      new",
+      "stderr": "✓ Enabled checkout_v2 in environment demo-target (<REDACTED>)"
+    },
+    {
+      "command": "flagsmith segment list --json",
+      "exit_code": 0,
+      "duration_ms": 645.318,
+      "stdout": "[\n  {\n    \"id\": 1201561,\n    \"name\": \"vip_users\",\n    \"rules\": {\n      \"$schema\": \"https://raw.githubusercontent.com/Flagsmith/flagsmith/main/sdk/evaluation-context.json#/$defs/SegmentRule\",\n      \"type\": \"ALL\",\n      \"conditions\": [\n        {\n          \"property\": \"is_vip\",\n          \"operator\": \"EQUAL\",\n          \"value\": \"true\"\n        }\n      ]\n    }\n  }\n]",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get cart_compat_reader --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 1129.685,
+      "stdout": "{\n  \"feature\": \"cart_compat_reader\",\n  \"type\": \"standard\",\n  \"description\": \"Backward-compatible cart reader\",\n  \"enabled\": true,\n  \"value\": null,\n  \"segment_overrides\": 0,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 1138.698,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"description\": \"Checkout V2 redesign\",\n  \"enabled\": true,\n  \"value\": null,\n  \"segment_overrides\": 1,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --segment vip_users --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 1893.687,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"segment\": {\n    \"id\": 1201561,\n    \"name\": \"vip_users\"\n  },\n  \"priority\": 0,\n  \"enabled\": true,\n  \"value\": null\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith segment list --json",
+      "exit_code": 0,
+      "duration_ms": 767.626,
+      "stdout": "[\n  {\n    \"id\": 1201561,\n    \"name\": \"vip_users\",\n    \"rules\": {\n      \"$schema\": \"https://raw.githubusercontent.com/Flagsmith/flagsmith/main/sdk/evaluation-context.json#/$defs/SegmentRule\",\n      \"type\": \"ALL\",\n      \"conditions\": [\n        {\n          \"property\": \"is_vip\",\n          \"operator\": \"EQUAL\",\n          \"value\": \"true\"\n        }\n      ]\n    }\n  }\n]",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get cart_compat_reader --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 1436.082,
+      "stdout": "{\n  \"feature\": \"cart_compat_reader\",\n  \"type\": \"standard\",\n  \"description\": \"Backward-compatible cart reader\",\n  \"enabled\": true,\n  \"value\": null,\n  \"segment_overrides\": 0,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 1435.242,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"description\": \"Checkout V2 redesign\",\n  \"enabled\": true,\n  \"value\": null,\n  \"segment_overrides\": 1,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --segment vip_users --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 2984.024,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"segment\": {\n    \"id\": 1201561,\n    \"name\": \"vip_users\"\n  },\n  \"priority\": 0,\n  \"enabled\": true,\n  \"value\": null\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag update checkout_v2 --disable --environment <REDACTED> --yes",
+      "exit_code": 0,
+      "duration_ms": 1262.768,
+      "stdout": "Feature              checkout_v2\nDescription          Checkout V2 redesign\nType                 standard\nState                off\nValue                -\nSegment overrides    1\nIdentity overrides   0\nCode references      0\nLifecycle stage      new",
+      "stderr": "✓ Disabled checkout_v2 in environment demo-target (<REDACTED>)"
+    },
+    {
+      "command": "flagsmith segment list --json",
+      "exit_code": 0,
+      "duration_ms": 607.566,
+      "stdout": "[\n  {\n    \"id\": 1201561,\n    \"name\": \"vip_users\",\n    \"rules\": {\n      \"$schema\": \"https://raw.githubusercontent.com/Flagsmith/flagsmith/main/sdk/evaluation-context.json#/$defs/SegmentRule\",\n      \"type\": \"ALL\",\n      \"conditions\": [\n        {\n          \"property\": \"is_vip\",\n          \"operator\": \"EQUAL\",\n          \"value\": \"true\"\n        }\n      ]\n    }\n  }\n]",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get cart_compat_reader --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 751.337,
+      "stdout": "{\n  \"feature\": \"cart_compat_reader\",\n  \"type\": \"standard\",\n  \"description\": \"Backward-compatible cart reader\",\n  \"enabled\": true,\n  \"value\": null,\n  \"segment_overrides\": 0,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 862.244,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"description\": \"Checkout V2 redesign\",\n  \"enabled\": false,\n  \"value\": null,\n  \"segment_overrides\": 1,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --segment vip_users --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 2618.301,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"segment\": {\n    \"id\": 1201561,\n    \"name\": \"vip_users\"\n  },\n  \"priority\": 0,\n  \"enabled\": true,\n  \"value\": null\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith segment list --json",
+      "exit_code": 0,
+      "duration_ms": 464.907,
+      "stdout": "[\n  {\n    \"id\": 1201561,\n    \"name\": \"vip_users\",\n    \"rules\": {\n      \"$schema\": \"https://raw.githubusercontent.com/Flagsmith/flagsmith/main/sdk/evaluation-context.json#/$defs/SegmentRule\",\n      \"type\": \"ALL\",\n      \"conditions\": [\n        {\n          \"property\": \"is_vip\",\n          \"operator\": \"EQUAL\",\n          \"value\": \"true\"\n        }\n      ]\n    }\n  }\n]",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get cart_compat_reader --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 842.811,
+      "stdout": "{\n  \"feature\": \"cart_compat_reader\",\n  \"type\": \"standard\",\n  \"description\": \"Backward-compatible cart reader\",\n  \"enabled\": true,\n  \"value\": null,\n  \"segment_overrides\": 0,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 1023.68,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"description\": \"Checkout V2 redesign\",\n  \"enabled\": false,\n  \"value\": null,\n  \"segment_overrides\": 1,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --segment vip_users --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 2440.182,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"segment\": {\n    \"id\": 1201561,\n    \"name\": \"vip_users\"\n  },\n  \"priority\": 0,\n  \"enabled\": true,\n  \"value\": null\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag delete checkout_v2 --segment vip_users --environment <REDACTED> --yes",
+      "exit_code": 0,
+      "duration_ms": 3156.691,
+      "stdout": "",
+      "stderr": "✓ Deleted checkout_v2 override for segment vip_users (1201561) in environment demo-target (<REDACTED>)"
+    },
+    {
+      "command": "flagsmith segment list --json",
+      "exit_code": 0,
+      "duration_ms": 632.229,
+      "stdout": "[\n  {\n    \"id\": 1201561,\n    \"name\": \"vip_users\",\n    \"rules\": {\n      \"$schema\": \"https://raw.githubusercontent.com/Flagsmith/flagsmith/main/sdk/evaluation-context.json#/$defs/SegmentRule\",\n      \"type\": \"ALL\",\n      \"conditions\": [\n        {\n          \"property\": \"is_vip\",\n          \"operator\": \"EQUAL\",\n          \"value\": \"true\"\n        }\n      ]\n    }\n  }\n]",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get cart_compat_reader --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 2105.764,
+      "stdout": "{\n  \"feature\": \"cart_compat_reader\",\n  \"type\": \"standard\",\n  \"description\": \"Backward-compatible cart reader\",\n  \"enabled\": true,\n  \"value\": null,\n  \"segment_overrides\": 0,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    },
+    {
+      "command": "flagsmith flag get checkout_v2 --environment <REDACTED> --json",
+      "exit_code": 0,
+      "duration_ms": 1070.671,
+      "stdout": "{\n  \"feature\": \"checkout_v2\",\n  \"type\": \"standard\",\n  \"description\": \"Checkout V2 redesign\",\n  \"enabled\": false,\n  \"value\": null,\n  \"segment_overrides\": 0,\n  \"identity_overrides\": 0,\n  \"code_references\": 0,\n  \"lifecycle_stage\": \"new\"\n}",
+      "stderr": ""
+    }
+  ],
+  "capture": {
+    "label": "scripted validation run",
+    "case": "case-b",
+    "scenario": "B1.1",
+    "validated_commit": "25dfcc1a3baf07bd660c625a8475c4085bad6272",
+    "target_before": {
+      "environment": "demo-target",
+      "hash": "141c5a5d62978c3215c169d1a7addc717f7528f702cf2731a2beb97d533743c2",
+      "flags": {
+        "cart_compat_reader": {
+          "enabled": true,
+          "segment_overrides": [],
+          "identity_overrides": []
+        },
+        "checkout_v2": {
+          "enabled": false,
+          "segment_overrides": [],
+          "identity_overrides": []
+        }
+      }
+    },
+    "target_after": {
+      "environment": "demo-target",
+      "hash": "141c5a5d62978c3215c169d1a7addc717f7528f702cf2731a2beb97d533743c2",
+      "flags": {
+        "cart_compat_reader": {
+          "enabled": true,
+          "segment_overrides": [],
+          "identity_overrides": []
+        },
+        "checkout_v2": {
+          "enabled": false,
+          "segment_overrides": [],
+          "identity_overrides": []
+        }
+      }
+    },
+    "target_final_matches_plan": true
+  }
+}

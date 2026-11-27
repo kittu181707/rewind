@@ -57,7 +57,7 @@ def test_read_only_tools_and_one_terminal_proposal(tool_set):
     assert result.status == "proposed" and result.proposal is not None
     assert result.proposal.operation_tuple == ("cart_compat_reader", "environment_default", "set_on")
     assert {t["function"]["name"] for t in model.requests[0][1]} == {
-        "read_source", "read_flag_state", "read_evidence", "propose_operation",
+        "read_source", "read_flag_state", "read_evidence", "propose_operation", "report_no_fix",
     }
     assert "fixture shop source" in json.dumps(model.requests[1][0])
     assert "fixture shop source" not in json.dumps(result.messages)
@@ -88,7 +88,7 @@ def test_proposal_requires_diagnosis_and_applies_allowlist(tool_set):
     fields = {"flag": "cart_compat_reader", "scope": "identity:alice", "operation": "set_on"}
     with pytest.raises(ToolError, match="requires diagnosis"):
         tool_set.propose(fields)
-    with pytest.raises(ToolError, match="Only one proposal"):
+    with pytest.raises(ToolError, match="Only one terminal decision"):
         tool_set.propose({**fields, "diagnosis": "A masked failure."})
 
 
@@ -113,6 +113,43 @@ def test_large_source_prefers_complete_flag_referencing_blocks():
     text = "# unrelated source\n" * 340 + marker + "\n# unrelated again\n" * 340
     excerpt = _source_excerpt(Path("shop.py"), text, frozenset({"feature"}))
     assert marker in excerpt and "unrelated source" not in excerpt
+
+
+def test_report_no_fix_returns_a_redacted_terminal_reason(tool_set, monkeypatch):
+    secret = "synthetic-refusal-sensitive-text"
+    monkeypatch.setattr(tool_set, "_redact", lambda text: text.replace(secret, "<REDACTED>"))
+    model = ScriptedModel(reply(*READS), reply(("report_no_fix", {"reason": f"No code path for {secret}."})))
+    result = run_attempt(model, tool_set, [])
+    assert result.status == "no_fix" and result.proposal is None
+    assert result.reason == "No code path for <REDACTED>."
+    assert secret not in json.dumps(result.messages)
+
+
+@pytest.mark.parametrize("arguments", [{}, {"reason": "  "}, {"reason": "x" * 1001}, {"reason": True}])
+def test_report_no_fix_requires_a_bounded_nonempty_reason(tool_set, arguments):
+    result = run_attempt(ScriptedModel(reply(*READS), reply(("report_no_fix", arguments))), tool_set, [])
+    assert result.status == "invalid" and "non-empty reason" in result.reason
+
+
+@pytest.mark.parametrize("other", [READS[0], ("propose_operation", {}), ("report_no_fix", {"reason": "another"})])
+def test_report_no_fix_must_be_the_only_call(tool_set, other):
+    result = run_attempt(ScriptedModel(reply(("report_no_fix", {"reason": "not supported"}), other)), tool_set, [])
+    assert result.status == "invalid" and "only call" in result.reason
+    assert tool_set.reads_remaining == 6
+
+
+def test_premature_report_no_fix_gets_the_read_correction(tool_set):
+    refusal = reply(("report_no_fix", {"reason": "No compatible code path."}))
+    model = ScriptedModel(refusal, reply(*READS), refusal)
+    result = run_attempt(model, tool_set, [])
+    assert result.status == "no_fix"
+    assert json.loads(model.requests[1][0][-1]["content"]) == {"ok": False, "error": READ_FIRST}
+
+
+def test_second_premature_terminal_call_is_rejected(tool_set):
+    refusal = reply(("report_no_fix", {"reason": "No compatible code path."}))
+    result = run_attempt(ScriptedModel(refusal, proposal_reply()), tool_set, [])
+    assert result.status == "invalid" and result.reason == READ_FIRST
 
 
 @pytest.mark.parametrize("template", ["{}", " \n {} \t ", "\n```json\n{}\n```\n ", "```\r\n{}\r\n```"])

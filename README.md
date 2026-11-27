@@ -23,6 +23,10 @@ The approval registry is in-process, not cryptographic protection or a sandbox f
 
 The demo uses Groq `openai/gpt-oss-120b` only. Gemini `gemini-3.6-flash` fallback is disabled and unsupported for this demo: none of the three synthetic tool exchanges completed (one initial timeout and two initial HTTP 503 responses). Those results do not establish whether Gemini accepts the tool schema.
 
+## Fixes after the agent freeze
+
+- **Revision 2 — Refusal protocol:** Use the declared `report_no_fix(reason)` tool after the required reads. Groq twice returned HTTP 400 after attempting to call an undeclared `json` tool under the old JSON-answer instruction. Tested legacy text replies remain readable. See [the freeze manifest](docs/freeze.md).
+
 ## Prior Work
 
 A pre-event throwaway spike in `~/rewind-spike` verified the Flagsmith CLI v2.0.0 mutation syntax, remote identity evaluation, and edge-convergence behavior before hacking began.

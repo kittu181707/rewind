@@ -1,7 +1,8 @@
-"""Run the eight live Day 2 validation scenarios with explicitly scripted approvals."""
+"""Run live validation batches with explicitly scripted approvals."""
 
 from __future__ import annotations
 
+import argparse
 from collections import Counter
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
@@ -47,7 +48,7 @@ class ValidationError(RuntimeError):
 
 
 class FirstProposalModel(LLMAdapter):
-    """V3–V5 stop before another diagnosis if the first proposal failed."""
+    """Verified scenarios stop before another diagnosis if the first proposal failed."""
 
     def complete(self, messages, tools):
         if len(messages) == 2 and json.loads(messages[1]["content"])["previous_attempts"]:
@@ -69,6 +70,11 @@ SCENARIOS = (
     *(Scenario(f"V{n}", "a", ("yes", "yes"), "verified") for n in range(3, 6)),
     *(Scenario(f"V{n}", "refusal", ("yes",), "refused") for n in range(6, 9)),
 )
+BATCHES = {
+    "day2": SCENARIOS,
+    "refusal-protocol": SCENARIOS[2:],
+    "case-b": tuple(Scenario(f"B{n}", "b", ("yes", "yes"), "verified") for n in range(1, 4)),
+}
 
 
 def require(condition: bool, message: str) -> None:
@@ -152,7 +158,7 @@ class WriteTrace:
         return result
 
 
-def preflight(config: RewindConfig, values: dict, log) -> dict:
+def preflight(config: RewindConfig, values: dict, log, batch: str) -> dict:
     for name in REQUIRED:
         print(f"{name}: {'OK' if values.get(name) else 'MISSING'}", file=log, flush=True)
     require(all(values.get(name) for name in REQUIRED), "Required variable missing in .env; see name-only preflight")
@@ -162,7 +168,14 @@ def preflight(config: RewindConfig, values: dict, log) -> dict:
             "Validation only supports the dedicated demo environments, flags and VIP override")
     dirty = git_bytes(ROOT, "status", "--porcelain")
     require(not dirty, f"git status --porcelain: working tree has {len(dirty.splitlines())} change(s)")
-    require(not git_bytes(ROOT, "tag", "--list", "agent-freeze").strip(), "The agent-freeze tag already exists")
+    head = git_bytes(ROOT, "rev-parse", "HEAD").decode().strip()
+    original_freeze = bool(git_bytes(ROOT, "tag", "--list", "agent-freeze").strip())
+    require(original_freeze == (batch != "day2"), "Unexpected agent-freeze tag state for this batch")
+    if batch == "case-b":
+        frozen = git_bytes(ROOT, "rev-parse", "agent-freeze-2^{}").decode().strip()
+        require(head == frozen, "Case B must run at agent-freeze-2")
+    if batch == "refusal-protocol":
+        require(not git_bytes(ROOT, "tag", "--list", "agent-freeze-2").strip(), "Revision 2 is already frozen")
     ports = (config.app.rehearsal_port, config.app.target_port)
     require(ports == (8001, 8002), "Validation expects rehearsal port 8001 and target port 8002")
     for port in ports:
@@ -187,7 +200,7 @@ def preflight(config: RewindConfig, values: dict, log) -> dict:
     output = redact((result.stdout + result.stderr).strip(), values)
     print(f"{shlex.join(pytest)}\n{output}", file=log, flush=True)
     require(result.returncode == 0, f"{shlex.join(pytest)}: exited {result.returncode}\n{output}")
-    return {"status": "PASS", "commit": git_bytes(ROOT, "rev-parse", "HEAD").decode().strip(), "git_clean": True,
+    return {"status": "PASS", "commit": head, "git_clean": True,
             "flagsmith_environment_list": sorted(ENVIRONMENTS), "ports_free": list(ports), "keys_distinct": True,
             "env_names": list(REQUIRED), "pytest": output.splitlines()[-1]}
 
@@ -236,7 +249,9 @@ def is_flaky(row: dict, run: dict) -> bool:
             or "timed out" in (run.get("error") or "").lower())
 
 
-def run_scenario(scenario: Scenario, number: int, config: RewindConfig, folder: Path, values: dict) -> dict:
+def run_scenario(
+    scenario: Scenario, number: int, config: RewindConfig, folder: Path, values: dict, *, provider_only_retry: bool,
+) -> dict:
     label = f"{scenario.name}.{number}"
     trace_seed = WriteTrace(config, {"rehearsal"})
     trace_run = WriteTrace(config, set(ENVIRONMENTS) if scenario.status == "verified" else {"rehearsal"})
@@ -278,6 +293,15 @@ def run_scenario(scenario: Scenario, number: int, config: RewindConfig, folder: 
             row["evidence"] = str(result.evidence.relative_to(ROOT))
             run = json.loads(result.evidence.read_text(encoding="utf-8"))
             row["summary"] = summarize(run)
+            row["unknown_tool_400s"] = [call["provider_message"] for call in run["llm_calls"]
+                if call["http_status"] == 400 and any(phrase in (call.get("provider_message") or "").lower()
+                    for phrase in ("unknown tool", "not in request.tools"))]
+            row["report_no_fix_used"] = any(
+                attempt["status"] == "no_fix" and attempt.get("messages") and any(
+                    call.get("function", {}).get("name") == "report_no_fix"
+                    for call in attempt["messages"][-1].get("tool_calls", [])
+                ) for attempt in run["attempts"]
+            )
             row["target_changes"] = [change for change in row["summary"]["changes"] if change["environment"] == "demo-target"]
             require(run["status"] == scenario.status,
                     f"{label}: {command}: expected {scenario.status}, got {run['status']}: {run.get('error') or 'see recorded attempts'}")
@@ -293,8 +317,13 @@ def run_scenario(scenario: Scenario, number: int, config: RewindConfig, folder: 
         except (RuntimeError, OSError, ValueError, subprocess.SubprocessError, KeyboardInterrupt) as exc:
             row["exception_type"] = type(exc).__name__
             row["error"] = redact(ops.redact(seed.redact(reader.redact(str(exc) or type(exc).__name__))), values)
-            row["retryable"] = is_flaky(row, run)
+            row["retryable"] = is_flaky(row, run) and (not provider_only_retry or run.get("error_kind") == "provider")
             print(f"FAIL: {row['error']}", file=transcript)
+            if provider_only_retry and "target_before" in row and "target_after" not in row:
+                try:
+                    row["target_after"] = snapshot_view(take_snapshot(reader, config, "demo-target"))
+                except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as snapshot_error:
+                    row["target_snapshot_error"] = redact(reader.redact(str(snapshot_error)), values)
         finally:
             for name, client in (("Seed", seed), ("Read-only snapshots", reader)):
                 records = [asdict(record) for record in client.command_log]
@@ -420,43 +449,49 @@ def write_audits(rows: list[dict]) -> dict:
     budget_ok = (0 < len(uses) <= gate["max_operations"] and bool(gate.get("closed_at"))
                  and all(datetime.fromisoformat(use["timestamp"]).tzinfo is not None for use in uses)
                  and [[use[key] for key in keys] for use in uses] == [[write[key] for key in keys] for write in rehearsal_writes])
-    return {
+    audits = {
         "c": {"status": "PASS" if all(name in ENVIRONMENTS for name, _ in forms) else "FAIL", "command_count": len(writes),
               "forms": [{"environment": name, "command": command} for name, command in forms]},
-        "d": {"status": "PASS" if refusal_counts == {"V6": 0, "V7": 0, "V8": 0} else "FAIL", "target_writes": refusal_counts},
         "f": {"status": "PASS" if budget_ok else "FAIL", "run": verified["run"], "used": len(uses),
               "max_operations": gate["max_operations"], "uses": uses},
     }
+    if any(row["case"] == "refusal" for row in rows):
+        audits["d"] = {"status": "PASS" if refusal_counts == {"V6": 0, "V7": 0, "V8": 0} else "FAIL",
+                       "target_writes": refusal_counts}
+    return audits
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--batch", choices=BATCHES, default="day2")
+    batch = parser.parse_args(argv).batch
     require(Path.cwd().resolve() == ROOT, "Run from the repository root")
     values = dict(dotenv_values(ROOT / ".env"))
     load_dotenv(ROOT / ".env", override=True)
     folder = ROOT / ".artifacts" / datetime.now(timezone.utc).strftime("validation-%Y%m%dT%H%M%S%fZ")
     folder.mkdir(mode=0o700, parents=True, exist_ok=False)
     config = load_config(DEFAULT_CONFIG)
-    record = {"status": "RUNNING", "approval_mode": "scripted", "started_at": timestamp(), "runs": [], "audits": {}}
+    record = {"status": "RUNNING", "batch": batch, "approval_mode": "scripted", "started_at": timestamp(), "runs": [], "audits": {}}
 
     def save() -> None:
         pending = folder / "validation.tmp"
         pending.write_text(redact(json.dumps(record, indent=2), values) + "\n", encoding="utf-8")
         pending.replace(folder / "validation.json")
 
-    print(f"Day 2 validation evidence: {folder.relative_to(ROOT)}", flush=True)
+    print(f"{batch} validation evidence: {folder.relative_to(ROOT)}", flush=True)
     try:
         with variable("FLAGSMITH_NO_INPUT", "1"), (folder / "preflight.log").open("w", encoding="utf-8", buffering=1) as log:
-            record["preflight"] = preflight(config, values, log)
+            record["preflight"] = preflight(config, values, log, batch)
             save()
             print(f"PRE-FLIGHT PASS: {record['preflight']['pytest']}; git clean, both ports free, Flagsmith names and keys mapped", flush=True)
             for name in REQUIRED:
                 print(f"{name}: OK", flush=True)
-            for scenario in SCENARIOS:
+            for scenario in BATCHES[batch]:
                 for number in (1, 2):
                     if record["runs"]:
                         time.sleep(RUN_INTERVAL_SECONDS)
                     print(f"{scenario.name}.{number}: starting {scenario.case}, scripted approvals", flush=True)
-                    row = run_scenario(scenario, number, config, folder, values)
+                    row = run_scenario(scenario, number, config, folder, values, provider_only_retry=batch != "day2")
                     record["runs"].append(row)
                     save()
                     summary = row.get("summary", {})

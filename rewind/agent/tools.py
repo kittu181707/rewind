@@ -20,6 +20,7 @@ MAX_SOURCE_BYTES = 128 * 1024
 MAX_SOURCE_CHARS = 4_500
 REQUIRED_READS = frozenset({"read_evidence", "read_flag_state", "read_source"})
 READ_FIRST = "Read evidence, flag state and source first"
+TERMINAL_TOOLS = frozenset({"propose_operation", "report_no_fix"})
 
 
 class ToolError(ValueError):
@@ -106,7 +107,7 @@ class AttemptTools:
         self._evidence = self.scrub(evidence)
         self._reads = 0
         self._completed_reads: set[str] = set()
-        self._proposed = False
+        self._terminal_submitted = False
         self.schemas = [
             _function("read_source", "Read one allowlisted application source path by its listed alias.", {"path": _text_enum(list(self._sources))}),
             _function("read_flag_state", "Read the flag defaults, relevant overrides and observed effective states.", {}),
@@ -115,6 +116,9 @@ class AttemptTools:
                 "diagnosis": {"type": "string", "description": "Name the failure mechanism in one or two plain sentences."},
                 "flag": _text_enum(list(config.allowed.flags)), "scope": _text_enum(list(config.allowed.scopes)),
                 "operation": _text_enum(["set_on", "set_off", "delete_override"]),
+            }),
+            _function("report_no_fix", "Finish without proposing a change when no configuration-only fix exists.", {
+                "reason": {"type": "string", "description": "Explain why configuration alone cannot fix the failure (maximum 1,000 characters)."},
             }),
         ]
 
@@ -165,12 +169,15 @@ class AttemptTools:
         except (OSError, UnicodeError, RuntimeError):
             raise ToolError("Could not read the allowlisted UTF-8 source") from None
 
-    def propose(self, arguments: dict[str, Any]) -> Proposal:
-        if self._proposed:
-            raise ToolError("Only one proposal is allowed per attempt")
+    def _submit_terminal(self) -> None:
+        if self._terminal_submitted:
+            raise ToolError("Only one terminal decision is allowed per attempt")
         if not REQUIRED_READS <= self._completed_reads:
             raise _ReadsRequired(READ_FIRST)
-        self._proposed = True
+        self._terminal_submitted = True
+
+    def propose(self, arguments: dict[str, Any]) -> Proposal:
+        self._submit_terminal()
         fields = ("diagnosis", "flag", "scope", "operation")
         if set(arguments) != set(fields) or any(not isinstance(arguments[k], str) or not arguments[k].strip() for k in fields):
             raise ToolError("Proposal requires diagnosis, flag, scope, and operation")
@@ -182,6 +189,13 @@ class AttemptTools:
         except FlagsmithOpsError as exc:
             raise ToolError(self._redact(str(exc))) from None
         return Proposal(self._redact(proposal.diagnosis), *proposal.operation_tuple)
+
+    def report_no_fix(self, arguments: dict[str, Any]) -> str:
+        self._submit_terminal()
+        reason = arguments.get("reason")
+        if set(arguments) != {"reason"} or not isinstance(reason, str) or not 0 < len(reason.strip()) <= 1000:
+            raise ToolError("report_no_fix requires a non-empty reason of at most 1,000 characters")
+        return self._redact(reason.strip())[:1000]
 
 
 def _tool_call(raw: Any) -> tuple[str, str, dict[str, Any]]:
@@ -197,6 +211,7 @@ def _tool_call(raw: Any) -> tuple[str, str, dict[str, Any]]:
 
 
 def _no_fix_reason(content: Any) -> str | None:
+    """Read older model responses; the current prompt uses report_no_fix."""
     if not isinstance(content, str):
         return None
     text = content.strip()
@@ -245,17 +260,19 @@ def run_attempt(model: ChatModel, tools: AttemptTools, previous: list[dict[str, 
                 reason = _no_fix_reason(content)
                 if reason is not None:
                     return AttemptResult("no_fix", tools.scrub(reason), messages=audit)
-                raise ToolError("Expected one proposal or a no_fix answer with a reason")
+                raise ToolError("Expected one proposal or a report_no_fix call with a reason")
             if not isinstance(calls, list) or len(calls) > MAX_READ_CALLS:
                 raise ToolError("Too many or malformed tool calls")
             parsed = [_tool_call(call) for call in calls]
             if len({call[0] for call in parsed}) != len(parsed):
                 raise ToolError("Duplicate tool call IDs")
-            if any(name == "propose_operation" for _, name, _ in parsed):
+            if any(name in TERMINAL_TOOLS for _, name, _ in parsed):
                 if len(parsed) != 1:
-                    raise ToolError("A proposal must be the only call in its response")
+                    raise ToolError("A terminal tool must be the only call in its response")
                 tool_id, name, arguments = parsed[0]
                 try:
+                    if name == "report_no_fix":
+                        return AttemptResult("no_fix", tools.report_no_fix(arguments), messages=audit)
                     proposal = tools.propose(arguments)
                 except _ReadsRequired:
                     if reminded:

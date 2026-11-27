@@ -36,12 +36,16 @@ def main(argv: list[str] | None = None) -> int:
         from dotenv import load_dotenv
         from rewind.config import ConfigError, load_config
         from rewind.orchestrator import RunError, run_check
+        from rewind.report import ReportError, write_report
 
         root = Path.cwd()
         try:
             load_dotenv(root / ".env", override=False)
-            return run_check(load_config(args.config), root).exit_code
-        except (ConfigError, RunError) as exc:
+            result = run_check(load_config(args.config), root)
+            report, _ = write_report(result.evidence)
+            print(f"Report: {report}")
+            return result.exit_code
+        except (ConfigError, RunError, ReportError) as exc:
             print(f"rewind check: {exc}", file=sys.stderr)
             return 1
     if args.command == "seed":

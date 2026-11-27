@@ -56,11 +56,15 @@ def test_cli_check_delegates_and_demo_remains_a_placeholder(tmp_path, monkeypatc
 
     def fake_check(config, root):
         calls.append((config.config_path, root))
-        return CheckResult("verified", root / "run.json")
+        recorded = root / "run.json"
+        recorded.write_text('{"status":"verified","approval_mode":"scripted"}')
+        return CheckResult("verified", recorded)
 
     monkeypatch.setattr("rewind.orchestrator.run_check", fake_check)
     config = REPO_ROOT / "examples/demo-shop/rewind.config.yaml"
     assert cli.main(["check", "--config", str(config)]) == 0
     assert calls == [(config, tmp_path)]
+    assert (tmp_path / "report.html").is_file() and (tmp_path / "report.json").is_file()
+    assert "Report:" in capsys.readouterr().out
     assert cli.main(["demo"]) == 0
     assert "not implemented yet" in capsys.readouterr().out

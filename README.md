@@ -33,7 +33,7 @@ Run `rewind ui --replay` locally to get a browser launcher, or `rewind ui --expo
 ## Why this exists
 
 - [Flagsmith’s rollback strategy](https://www.flagsmith.com/blog/rollback-strategy): “Rehearse the rollback in staging.”
-- [Flagsmith’s automatic rollback guide](https://www.flagsmith.com/blog/automatic-rollback): “A rollback that touches a database or reopens a fixed bug needs a person”.
+- [Flagsmith’s automatic rollback guide](https://www.flagsmith.com/blog/automatic-rollback): “A rollback that touches a database or reopens a fixed bug needs a person…”
 
 Rewind automates that staging rehearsal and keeps a person in charge of every change. It also checks for a failure those guides don't cover: a targeting override that keeps users on the new experience after the default is switched off.
 

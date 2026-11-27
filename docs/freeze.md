@@ -42,3 +42,35 @@ feeea41402532fecaeac1685343ce05cc882c48ccc0ad436817e6efd25fe8f51  rewind/plannin
 9e4a59ece4f361ee607ad18719786094b5636a3349988aa92ce8e9719686b2e1  rewind/verifier.py
 386ceab68b97027ded2e1e8c9d830a0756c1d367db1740ab2aa40636f70f64c9  examples/demo-shop/journey.py
 ```
+
+## Changes after revision 2
+
+Compared against `agent-freeze-2` (`25dfcc1`):
+
+- `rewind/orchestrator.py`: [`9195b7d`](https://github.com/kittu181707/rewind/commit/9195b7d) added the optional validated `do` request, its per-run flag and direction override, the interpretation at Gate 1, and redacted request and interpretation-call records. [`aef3b60`](https://github.com/kittu181707/rewind/commit/aef3b60) added a display-only Gate 2 preview from the recorded rehearsal evidence and the planner’s existing per-user flag predictions. [`ae43530`](https://github.com/kittu181707/rewind/commit/ae43530) records displayed approval prompts and derives the autonomy ledger when saving evidence and finishing the terminal run. [`d208555`](https://github.com/kittu181707/rewind/commit/d208555) added an optional observer for sanitized request, progress, failure, attempt, and gate events. Its gate payloads show the ordered plan and the starting snapshot; an observer error does not decide the run. The proposal, retry, drift, and verification decisions are the same as in revision 2.
+- `rewind/approvals.py`: [`dc0fef8`](https://github.com/kittu181707/rewind/commit/dc0fef8) switched the displayed Gate 1 and Gate 2 text to the shared terminal renderers while retaining the summaries stored in the tokens. [`d208555`](https://github.com/kittu181707/rewind/commit/d208555) added the `BrowserApproval` input adapter and the `human (ui click)` label. The terminal still requires a TTY; the browser adapter waits for the exact pending gate. Token issuance, operation order, snapshot binding, single-use enforcement, and failure-signature checks are unchanged.
+- `rewind/agent/llm.py`: [`9195b7d`](https://github.com/kittu181707/rewind/commit/9195b7d) added `complete_once` for the separate Groq request interpreter: one call at temperature 0 with no retry or fallback. The diagnosis adapter’s existing `complete` path is unchanged.
+- `rewind/flagsmith_ops.py`: [`d208555`](https://github.com/kittu181707/rewind/commit/d208555) added read-only `flag list` inventory for configured environments, with feature and identity override selectors. Inventory can display flags outside the write allowlist; write validation and token enforcement are unchanged.
+
+The 15-second SSE keepalive is confined to `rewind/web/server.py` and does not add a run event or change approval handling.
+
+### Final-candidate SHA-256 — changed files
+
+```text
+27bc4f4fa52985151caa806b6bca6fcc2b1e0dcc849c21d78e27ace7365082bf  rewind/orchestrator.py
+594a815f633d960788fdd9171d2606daba580bc13a6c9320afceb9283ee5a75f  rewind/approvals.py
+2a1851dbcb0ca489450751f5db47132753a1280f076b650856053321c0783673  rewind/agent/llm.py
+1a3c639c69d466c27140b97a5994d3e002faac8084ab37cc14603fa4465d7f0f  rewind/flagsmith_ops.py
+```
+
+### Final-candidate SHA-256 — exact revision 2 matches
+
+The bytes in these five files match the corresponding blobs at `agent-freeze-2` and the revision 2 manifest above.
+
+```text
+cac0455343264f5765319593ac0c1f92e9a5e01be61442804f132c6573ae0502  rewind/agent/prompt.py
+cec9d28ef55358214bcc7354b9944b980410ec9e252c19dd7418d0d434bc327e  rewind/agent/tools.py
+feeea41402532fecaeac1685343ce05cc882c48ccc0ad436817e6efd25fe8f51  rewind/planning.py
+9e4a59ece4f361ee607ad18719786094b5636a3349988aa92ce8e9719686b2e1  rewind/verifier.py
+386ceab68b97027ded2e1e8c9d830a0756c1d367db1740ab2aa40636f70f64c9  examples/demo-shop/journey.py
+```

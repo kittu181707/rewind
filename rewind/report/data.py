@@ -8,6 +8,8 @@ import re
 from collections.abc import Iterable
 from datetime import datetime, timezone
 
+from rewind.ledger import autonomy_ledger, ledger_breakdown, ledger_summary
+
 
 VERDICTS = {"verified": "Verified", "refused": "Refused", "stopped": "Stopped", "approval_denied": "Denied"}
 REJECTED_SUGGESTION = "Rejected suggestion"
@@ -236,7 +238,8 @@ def _summary(data: dict) -> tuple[tuple[str, str], ...]:
     fix_line = (("Verified fix", preview["fix"]),) if preview else ()
     target_line = () if preview and data["status"] == "verified" else (("What changed", changed),)
     return (*request_line, ("Problem found in rehearsal", observed), (label, found), *fix_line, *target_line,
-            ("Who approved", "; ".join(approvals) + "."))
+            ("Who approved", "; ".join(approvals) + "."),
+            ("Autonomy", f"{data['autonomy_summary']} {data['autonomy_breakdown']}"))
 
 
 def public_report(run: dict, *, captured: bool = False, allowed_flags: Iterable[str] | None = None) -> dict:
@@ -248,6 +251,7 @@ def public_report(run: dict, *, captured: bool = False, allowed_flags: Iterable[
         allowed_flags = next((snapshot["state"]["flags"] for snapshot in run.get("snapshots", [])
                               if "flags" in snapshot.get("state", {})), ())
     allowed = frozenset(allowed_flags)
+    ledger = autonomy_ledger(run)
     data = _sanitize({
         "claim": "Off is not undo.", **metadata, "verdict": VERDICTS[run["status"]],
         "source": "captured run" if captured or run.get("capture") else "recorded run",
@@ -255,6 +259,7 @@ def public_report(run: dict, *, captured: bool = False, allowed_flags: Iterable[
         "capture": _fields(run.get("capture") or {}, "label", "case", "scenario", "validated_commit"),
         "request": _fields(run.get("request") or {}, "text", "flag", "direction", "interpretation"),
         "rehearsal_preview": rehearsal_preview(run, sorted(allowed)),
+        "autonomy_ledger": ledger, "autonomy_summary": ledger_summary(ledger), "autonomy_breakdown": ledger_breakdown(ledger),
         "transitions": [{
             **_fields(event, "label", "environment", "timestamp", "phase", "summary", "ok"),
             "steps": [_observation(step, allowed) for step in event.get("steps", [])],

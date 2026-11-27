@@ -133,6 +133,11 @@ def test_do_interprets_once_and_still_requires_approval(tmp_path, monkeypatch, c
     assert len(messages_seen) == len(prompts) == 1
     assert run["status"] == "approval_denied" and run["changes"] == run["flagsmith_command_log"] == []
     assert run["approvals"][0]["status"] == "not approved" and run["approval_mode"] == "scripted"
+    assert run["autonomy_ledger"] == report["autonomy_ledger"] == {
+        "reads": 0, "rehearsal_writes": 0, "verifications": 0, "model_calls": 0,
+        "steps_alone": 0, "approvals_asked": 1, "staging_writes": 0,
+    }
+    assert "stopped to ask you once" in output
     cfg = load_config(CONFIG)
     assert cfg.rollback.flag == "checkout_v2" and cfg.allowed.flags == ["checkout_v2", "cart_compat_reader"]
     assert cfg.allowed.scopes == ["environment_default", "segment:vip_users"]

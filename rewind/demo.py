@@ -63,4 +63,6 @@ def replay(
         "refused": "No verified configuration-only recovery found. Target unchanged.",
     }.get(data["status"], f"Verdict: {data['verdict']}")
     terminal.print(f"captured run | {final}", style="bold", markup=False, highlight=False, overflow="fold")
+    terminal.print(data["autonomy_summary"], markup=False, highlight=False, overflow="fold")
+    terminal.print(data["autonomy_breakdown"], markup=False, highlight=False, overflow="fold")
     return report

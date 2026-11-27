@@ -27,6 +27,7 @@ from rewind.approvals import (
 )
 from rewind.config import RewindConfig
 from rewind.flagsmith_ops import CommandRecord, FlagsmithOps, FlagsmithOpsError
+from rewind.ledger import autonomy_ledger, ledger_breakdown, ledger_summary
 from rewind.planning import Operation, PlanningError, configuration, difference, effective_by_user, project
 from rewind.report.data import rehearsal_preview
 from rewind.request import RollbackRequest
@@ -213,7 +214,8 @@ class _Run:
             "approval_mode": self.approval_mode,
             "provider": config.agent.provider, "model": config.agent.model,
             "environments": {side: instance.environment for side, instance in (("rehearsal", self.rehearsal), ("target", self.target))},
-            "app_variant": os.getenv("APP_VARIANT", "default"), "approvals": [], "snapshots": [], "transitions": [],
+            "app_variant": os.getenv("APP_VARIANT", "default"), "approvals": [], "approval_requests": [],
+            "snapshots": [], "transitions": [],
             "attempts": [], "timings": [], "changes": [], "target_failure_reproduced": None,
         }
         if request is not None:
@@ -235,13 +237,20 @@ class _Run:
     def say(self, text: str) -> None:
         self.console.print(self.clean(text), markup=False, highlight=False, overflow="fold")
 
-    def save(self) -> None:
+    def show_approval(self, text: str) -> None:
+        self.data["approval_requests"].append({"gate": self.gate, "timestamp": _now()})
+        self.say(text)
+
+    def save(self) -> dict[str, int]:
         payload = {**self.data, "elapsed_seconds": round(time.perf_counter() - self.started, 3),
                    "llm_calls": [asdict(call) for call in self.model.calls],
                    "flagsmith_command_log": [asdict(record) for record in self.ops.command_log]}
+        ledger = autonomy_ledger(payload)
+        payload["autonomy_ledger"] = ledger
         pending = self.file.with_suffix(".tmp")
         pending.write_text(json.dumps(self.clean(payload), indent=2) + "\n", encoding="utf-8")
         pending.replace(self.file)
+        return ledger
 
     @contextmanager
     def time(self, phase: str):
@@ -352,7 +361,7 @@ class _Run:
         self.ops.validate_operation(instance.environment, *self.rollback)
         with self.time("Gate 1 rehearsal approval"):
             token = gate1_rehearsal(summary, environment=instance.environment, max_operations=max_ops,
-                                    approver=self.approver, input_fn=self.input_fn, output_fn=self.say)
+                                     approver=self.approver, input_fn=self.input_fn, output_fn=self.show_approval)
         try:
             self.approval(token, instance)
             self.require_environment_binding(instance)
@@ -452,7 +461,8 @@ class _Run:
             "preview": self.clean(rehearsal_preview(self.data, self.config.allowed.flags)),
         }
         with self.time("Gate 2 exact target approval"):
-            token = gate2_target(proof, start.hash, approver=self.approver, input_fn=self.input_fn, output_fn=self.say)
+            token = gate2_target(proof, start.hash, approver=self.approver, input_fn=self.input_fn,
+                                 output_fn=self.show_approval)
         audit = self.approval(token, instance)
         try:
             with self.ops.approved_target_plan(instance.environment, operations, token) as replay:
@@ -514,7 +524,9 @@ class _Run:
                 self.say("Review the evidence and approve any recovery action separately. No automatic revert was attempted.")
         finally:
             self.data["finished_at"] = _now()
-            self.save()
+            ledger = self.save()
+            self.say(ledger_summary(ledger))
+            self.say(ledger_breakdown(ledger))
             self.say(f"Evidence: {self.file}")
         return CheckResult(self.data["status"], self.file)
 

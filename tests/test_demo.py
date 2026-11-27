@@ -34,6 +34,7 @@ def test_demo_offline_with_environment_cleared(tmp_path, monkeypatch, capsys, ar
     assert "captured run | Report:" in output
     assert "Gate 1 — captured, scripted approval" in output
     assert "verify before recovery" in output
+    assert "steps on its own" in output
     if status == "verified":
         assert "Diagnosis:" in output and "Rejected suggestion:" not in output
         assert "Gate 2 — captured, scripted approval" in output

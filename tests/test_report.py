@@ -22,7 +22,7 @@ def test_captured_reports_keep_every_transition_user_and_change(tmp_path, case, 
     html = output.read_text()
     assert json.loads(output.with_suffix(".json").read_text()) == data
     summary = html.split('aria-label="Run summary">', 1)[1].split("</section>", 1)[0]
-    assert summary.count("<p>") == 4
+    assert summary.count("<p>") == 5 and "Autonomy:" in summary
     assert html.index('aria-label="Run summary"') < html.index("<header>")
     assert html.count('class="timeline-event" open') == 1
     assert html.count('class="timeline-event"') == len(run["transitions"])
@@ -59,6 +59,7 @@ def test_captured_reports_keep_every_transition_user_and_change(tmp_path, case, 
         assert "No verified fix found: 3 proposals rejected by the verifier. Target unchanged." in summary
         assert "Rejected suggestion:" in summary and "What Rewind found" not in html
         assert html.count("Rejected suggestion:") == 4
+        assert data["autonomy_ledger"]["approvals_asked"] == 1 and data["autonomy_ledger"]["staging_writes"] == 0
     if case == "case-b":
         assert "delete override for segment vip_users" in html
         assert "alice and carol still ran the new checkout" in summary
@@ -74,6 +75,7 @@ def test_captured_reports_keep_every_transition_user_and_change(tmp_path, case, 
         assert len(visibility) == len(before) * len(data["allowed_flags"])
         assert all((row["before"], row["after"]) == (before[row["user"]][row["flag"]], after[row["user"]][row["flag"]])
                    for row in visibility)
+        assert data["autonomy_ledger"]["approvals_asked"] == 2 and data["autonomy_ledger"]["staging_writes"] > 0
     assert run["attempts"][-1]["proposal"]["diagnosis"] in summary
 
 

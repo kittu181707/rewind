@@ -246,6 +246,113 @@ def _summary(data: dict) -> tuple[tuple[str, str], ...]:
             ("Autonomy", f"{data['autonomy_summary']} {data['autonomy_breakdown']}"))
 
 
+
+
+_TOTALS_GOT_RE = re.compile(r"got=\((\d+),\s*(\d+)\)")
+_CART_GOT_RE = re.compile(r"got_cart=([^,\s]+)")
+
+
+def customer_view_rows(transition: dict | None) -> list[dict]:
+    """Extract per-user shop view fields strictly from recorded transition steps."""
+    if not transition:
+        return []
+    failed_by_user: dict[str, dict[str, str]] = {}
+    for item in transition.get("failed_assertions", []):
+        if isinstance(item, dict) and item.get("user") and item.get("assertion"):
+            failed_by_user.setdefault(str(item["user"]), {})[str(item["assertion"])] = str(item.get("detail") or "")
+
+    rows: list[dict] = []
+    for step in transition.get("steps", []):
+        if not isinstance(step, dict) or step.get("name") != "checkout":
+            continue
+        user = step.get("user")
+        if not user:
+            continue
+        assertions = {
+            str(entry["name"]): entry
+            for entry in step.get("assertions", [])
+            if isinstance(entry, dict) and entry.get("name")
+        }
+        http_status = step.get("http_status")
+        executed_version = step.get("executed_version")
+
+        error_text: str | None = None
+        http_assertion = assertions.get("http_status_200")
+        http_detail = str(http_assertion.get("detail") or "") if http_assertion else failed_by_user.get(str(user), {}).get("http_status_200", "")
+        if "error=" in http_detail:
+            candidate_err = http_detail.split("error=", 1)[1].strip()
+            if candidate_err:
+                error_text = candidate_err
+        elif isinstance(http_status, int) and http_status >= 400 and http_detail:
+            error_text = http_detail
+
+        cart_id: str | None = None
+        cart_detail = str((assertions.get("same_customer_and_cart_id") or {}).get("detail") or "")
+        cart_match = _CART_GOT_RE.search(cart_detail)
+        if cart_match and cart_match.group(1) != "None":
+            cart_id = cart_match.group(1)
+
+        totals: str | None = None
+        qty_assertion = assertions.get("latest_quantities_survive")
+        cart_intact = qty_assertion.get("pass") if isinstance(qty_assertion, dict) and isinstance(qty_assertion.get("pass"), bool) else None
+        if isinstance(qty_assertion, dict):
+            qty_detail = str(qty_assertion.get("detail") or "")
+            tot_match = _TOTALS_GOT_RE.search(qty_detail)
+            if tot_match:
+                items_count = int(tot_match.group(1))
+                cents = int(tot_match.group(2))
+                totals = f"{items_count} {'item' if items_count == 1 else 'items'} · ${cents / 100:.2f}"
+
+        ver_assertion = assertions.get("executed_version_matches_goal")
+        if isinstance(ver_assertion, dict) and isinstance(ver_assertion.get("pass"), bool):
+            version_ok: bool | None = ver_assertion["pass"]
+        elif any(k in failed_by_user.get(str(user), {}) for k in ("executed_version_matches_goal", "direct_executed_version_matches_goal")):
+            version_ok = False
+        else:
+            version_ok = None
+
+        is_vip: bool | None = None
+        traits_detail = str((assertions.get("traits_unchanged") or {}).get("detail") or "")
+        if "'is_vip': True" in traits_detail or '"is_vip": true' in traits_detail.lower():
+            is_vip = True
+        elif "'is_vip': False" in traits_detail or '"is_vip": false' in traits_detail.lower():
+            is_vip = False
+
+        if http_status == 200:
+            order_placed: bool | None = True
+        elif isinstance(http_status, int) and http_status >= 400:
+            order_placed = False
+        else:
+            order_placed = None
+
+        rows.append({
+            "user": str(user),
+            "http_status": http_status,
+            "executed_version": executed_version,
+            "error": error_text,
+            "cart_id": cart_id,
+            "totals": totals,
+            "cart_intact": cart_intact,
+            "order_placed": order_placed,
+            "version_ok": version_ok,
+            "is_vip": is_vip,
+        })
+    return rows
+
+
+def _final_verify_transition(run: dict) -> dict | None:
+    transitions = run.get("transitions", [])
+    target_name = (run.get("environments") or {}).get("target")
+    if target_name:
+        target_verify = next(
+            (tx for tx in reversed(transitions) if tx.get("environment") == target_name and tx.get("phase") == "verify"),
+            None,
+        )
+        if target_verify is not None:
+            return target_verify
+    return next((tx for tx in reversed(transitions) if tx.get("phase") == "verify"), None)
+
+
 def public_report(run: dict, *, captured: bool = False, allowed_flags: Iterable[str] | None = None) -> dict:
     secrets = _environment_secrets()
     metadata = _fields(run, "status", "provider", "model", "approval_mode", "environments", "elapsed_seconds",
@@ -279,6 +386,10 @@ def public_report(run: dict, *, captured: bool = False, allowed_flags: Iterable[
         "changes": [{"status": "recorded", **_fields(change, "kind", "environment", "flag", "scope", "operation",
                      "status", "timestamp", "db_path", "user", "step", "details", "duration_ms")}
                     for change in run.get("changes", [])],
+        "customer_views": {
+            "before": {"label": (rb := rollback_failure(run.get("transitions", []))) and rb.get("label"), "users": customer_view_rows(rb)},
+            "after": {"label": (fv := _final_verify_transition(run)) and fv.get("label"), "users": customer_view_rows(fv)},
+        },
         "limits": ["The evidence covers the recorded test users and fixtures, not every production customer.",
                    "Rewind tests configuration-only recovery; it does not undo a database migration or rewrite app code.",
                    "Unreached approvals, missing snapshots, and failed checks do not establish target safety."],

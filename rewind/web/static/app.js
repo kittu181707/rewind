@@ -86,6 +86,47 @@ function renderRequestBubble(text) {
   add(bubble, "p", text, "msg-user-text");
 }
 
+function renderCustomerScreens(parent, title, rows, mode) {
+  if (!rows || !rows.length) return;
+  const panel = add(parent, "section", null, "customer-panel");
+  add(panel, "h3", title);
+  const screens = add(panel, "div", null, "customer-screens");
+  for (const row of rows) {
+    const screen = add(screens, "article", null, "customer-screen");
+    const bar = add(screen, "div", null, "customer-screen-bar");
+    const who = add(bar, "span", row.user, "mono");
+    if (row.is_vip === true) pill(bar, "VIP", "pill-warn");
+    else if (row.cart_id) pill(bar, row.cart_id, "mono");
+
+    const body = add(screen, "div", null, "customer-screen-body");
+    const chips = add(body, "div", null, "user-chip-list");
+    if (row.http_status !== null && row.http_status !== undefined) {
+      const httpOk = row.http_status >= 200 && row.http_status < 400;
+      pill(chips, `HTTP ${row.http_status}`, `mono ${httpOk ? "pill-ok" : "pill-err"}`);
+    }
+    if (row.executed_version) {
+      pill(chips, row.executed_version, `mono ${row.version_ok === false ? "pill-err" : "pill-ok"}`);
+    }
+
+    if (row.error) {
+      add(body, "div", row.error, "shop-error-banner");
+    } else if (mode === "before" && row.version_ok === false) {
+      add(body, "div", `Ran ${row.executed_version} instead of rollback target`, "shop-warn-banner");
+    } else if (mode === "after" && row.order_placed === true) {
+      const parts = ["Order placed"];
+      if (row.cart_intact === true) parts.push("Cart intact");
+      if (row.totals) parts.push(row.totals);
+      add(body, "div", parts.join(" · "), "shop-ok-banner");
+    } else if (mode === "before" && row.order_placed === true && row.totals) {
+      add(body, "div", `Order placed · ${row.totals}`, "shop-ok-banner");
+    }
+
+    if (row.cart_id && row.is_vip === true) {
+      add(body, "div", `Cart: ${row.cart_id}`, "mono muted");
+    }
+  }
+}
+
 function table(node, title, headers, rows) {
   const wrapper = add(node, "div", null, "table-wrap");
   const grid = add(wrapper, "table");
@@ -302,7 +343,10 @@ function show(event) {
       updateCounters();
       const node = card("Failure evidence");
       add(node, "p", data.problem);
-      const grid = add(node, "div", null, "user-grid");
+      const split = add(node, "div", null, (data.customers && data.customers.length) ? "failure-split" : "");
+      const gridBox = add(split, "div");
+      add(gridBox, "h3", "Per-user checkouts");
+      const grid = add(gridBox, "div", null, "user-grid");
       for (const row of (data.users || [])) {
         const tile = add(grid, "div", null, "user-chip-card");
         add(tile, "strong", row.user, "mono");
@@ -311,6 +355,9 @@ function show(event) {
         pill(chips, `HTTP ${row.http_status ?? "?"}`, `mono ${httpOk ? "pill-ok" : "pill-err"}`);
         const verOk = row.version_ok !== false;
         pill(chips, row.version ?? "unknown", `mono ${verOk ? "pill-ok" : "pill-err"}`);
+      }
+      if (data.customers && data.customers.length) {
+        renderCustomerScreens(split, "Customer view (before fix)", data.customers, "before");
       }
       break;
     }
@@ -342,6 +389,13 @@ function show(event) {
       if (data.error) add(node, "p", data.error, "shop-error-banner");
       if (data.ledger) labeled(node, "Autonomy", data.ledger);
       if (data.breakdown) add(node, "p", data.breakdown, "muted");
+      const afterUsers = data.customer_views?.after?.users || [];
+      if (afterUsers.length) {
+        const afterLabel = data.customer_views?.after?.label
+          ? `Customer view (${data.customer_views.after.label})`
+          : "Customer view (after run)";
+        renderCustomerScreens(node, afterLabel, afterUsers, "after");
+      }
       const footerActions = add(node, "div", null, "actions");
       if (data.report) {
         const link = add(footerActions, "a", "Open evidence report", "btn-link");

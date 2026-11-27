@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Literal
 
-from rewind.report.data import REJECTED_SUGGESTION, describe_write, failure_summary
+from rewind.report.data import REJECTED_SUGGESTION, customer_view_rows, describe_write, failure_summary
 
 EventType = Literal[
     "started",
@@ -39,7 +39,11 @@ def failure_event(transition: dict) -> dict:
         }
         for user, result in transition.get("user_outcomes", {}).items()
     ]
-    return {"problem": failure_summary(transition), "users": rows}
+    return {
+        "problem": failure_summary(transition),
+        "users": rows,
+        "customers": customer_view_rows(transition),
+    }
 
 
 def attempt_event(attempt: dict) -> dict:
@@ -68,4 +72,5 @@ def final_event(data: dict, report: str) -> RunEvent:
     return RunEvent("final", {"verdict": data["verdict"], "status": data["status"], "text": outcome[data["status"]],
                               "error": data.get("error"), "ledger": data["autonomy_summary"],
                               "ledger_counts": data.get("autonomy_ledger"),
+                              "customer_views": data.get("customer_views"),
                               "breakdown": data["autonomy_breakdown"], "report": report})

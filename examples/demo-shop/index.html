@@ -3,138 +3,290 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Rewind Demo Shop</title>
+  <meta name="color-scheme" content="light dark" />
+  <title>Rewind Roasters · Demo Store</title>
   <style>
     :root {
-      --bg: #0f172a;
-      --panel: #1e293b;
-      --border: #334155;
-      --text: #f8fafc;
-      --muted: #94a3b8;
-      --accent: #38bdf8;
-      --ok: #22c55e;
-      --warn: #f59e0b;
-      --err: #ef4444;
+      color-scheme: light dark;
+      --bg: #f4f6fb;
+      --surface: #ffffff;
+      --surface-subtle: #f8fafc;
+      --border: #d5deea;
+      --border-strong: #b8c6d9;
+      --ink: #111827;
+      --muted: #526075;
+      --accent: #1d4ed8;
+      --accent-hover: #1e40af;
+      --accent-soft: #e8f0fe;
+      --accent-ink: #ffffff;
+      --ok: #15623a;
+      --ok-bg: #e7f6ee;
+      --ok-border: #9bd7b6;
+      --err: #9b1c1c;
+      --err-bg: #fef2f2;
+      --err-border: #f3b5b5;
+      --warn: #8a4b08;
+      --warn-bg: #fff8eb;
+      --warn-border: #f5b942;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0c121e;
+        --surface: #131c2e;
+        --surface-subtle: #19243a;
+        --border: #2a3954;
+        --border-strong: #3c5074;
+        --ink: #eef3fc;
+        --muted: #a4b4cc;
+        --accent: #60a5fa;
+        --accent-hover: #93c5fd;
+        --accent-soft: #1b2e52;
+        --accent-ink: #091326;
+        --ok: #6ee7b7;
+        --ok-bg: #0d2b1f;
+        --ok-border: #1e5f44;
+        --err: #fca5a5;
+        --err-bg: #311216;
+        --err-border: #6e262e;
+        --warn: #fcd34d;
+        --warn-bg: #2e1f08;
+        --warn-border: #b46914;
+      }
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
-      color: var(--text);
-      padding: 24px;
+      color: var(--ink);
     }
-    .container { max-width: 920px; margin: 0 auto; display: grid; gap: 16px; }
-    header {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 16px 20px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    .mono { font-family: var(--mono); font-size: 0.875em; }
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
     }
-    h1 { margin: 0; font-size: 1.25rem; }
-    .sub { color: var(--muted); font-size: 0.85rem; margin-top: 2px; }
-    .badge {
-      display: inline-block; padding: 6px 12px; border-radius: 999px;
-      font-weight: 700; font-size: 0.85rem; letter-spacing: 0.03em;
+    .topbar-inner {
+      max-width: 1080px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
     }
-    .badge-v2 { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid #f59e0b; }
-    .badge-legacy { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid #22c55e; }
-    .badge-none { background: rgba(148, 163, 184, 0.15); color: var(--muted); border: 1px solid var(--border); }
-    .grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
-    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
-    .card {
-      background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px;
+    .brand { display: flex; align-items: baseline; gap: 10px; }
+    .brand h1 { margin: 0; font-size: 1.2rem; font-weight: 800; color: var(--accent); }
+    .sub { color: var(--muted); font-size: 0.85rem; }
+    .status-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface-subtle);
+      font-size: 0.8rem;
+      font-weight: 700;
     }
-    .card h2 { margin: 0 0 12px 0; font-size: 1rem; color: var(--accent); }
-    .users { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .badge-v2 { background: var(--warn-bg); color: var(--warn); border-color: var(--warn-border); }
+    .badge-legacy { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-border); }
+    .badge-none { color: var(--muted); }
+    .vip-chip { background: var(--warn-bg); color: var(--warn); border-color: var(--warn-border); }
+    .vip-chip[hidden] { display: none; }
+
+    .container { max-width: 1080px; margin: 0 auto; padding: 24px; display: grid; gap: 16px; }
+    .customer-bar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .users { display: flex; gap: 8px; flex-wrap: wrap; }
     button {
-      cursor: pointer; border-radius: 8px; border: 1px solid var(--border);
-      background: #0f172a; color: var(--text); padding: 8px 14px; font-weight: 600;
+      cursor: pointer;
+      border-radius: 6px;
+      border: 1px solid var(--border-strong);
+      background: var(--surface);
+      color: var(--ink);
+      padding: 8px 14px;
+      font: inherit;
+      font-size: 0.88rem;
+      font-weight: 650;
     }
-    button:hover { border-color: var(--accent); }
-    button.active { background: var(--accent); color: #0f172a; border-color: var(--accent); }
-    button.primary { background: #2563eb; border-color: #3b82f6; color: #fff; }
-    button.primary:hover { background: #1d4ed8; }
-    table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 0.92rem; }
-    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
-    th { color: var(--muted); font-weight: 600; }
-    .totals { display: flex; justify-content: space-between; font-weight: 700; padding-top: 8px; }
-    .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+    button:hover { border-color: var(--accent); background: var(--surface-subtle); }
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+    button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
     .error-banner {
-      display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid var(--err);
-      color: #fecaca; padding: 14px 16px; border-radius: 10px; font-weight: 600;
+      display: none;
+      background: var(--err-bg);
+      border: 1px solid var(--err-border);
+      border-left: 4px solid var(--err);
+      color: var(--err);
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-weight: 700;
     }
     .ok-banner {
-      display: none; background: rgba(34, 197, 94, 0.15); border: 1px solid var(--ok);
-      color: #bbf7d0; padding: 14px 16px; border-radius: 10px; font-weight: 600;
+      display: none;
+      background: var(--ok-bg);
+      border: 1px solid var(--ok-border);
+      border-left: 4px solid var(--ok);
+      color: var(--ok);
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-weight: 650;
     }
+
+    .grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 16px; align-items: start; }
+    @media (max-width: 780px) { .grid { grid-template-columns: 1fr; } .container { padding: 12px; } .topbar { padding: 12px; } }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+    .card h2 { margin: 0; font-size: 1rem; font-weight: 750; }
+    .catalog {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+      gap: 12px;
+    }
+    .product {
+      border: 1px solid var(--border);
+      background: var(--surface-subtle);
+      border-radius: 10px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .product-title { font-weight: 700; font-size: 0.94rem; }
+    .product-meta { display: flex; justify-content: space-between; align-items: center; font-size: 0.84rem; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 650; }
+    .totals { display: flex; justify-content: space-between; font-weight: 750; padding-top: 6px; border-top: 1px solid var(--border); }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
     .flag-row {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      background: var(--surface-subtle);
+      border-radius: 8px;
+      font-family: var(--mono);
+      font-size: 0.84rem;
     }
-    .pill-on { color: #4ade80; font-weight: 700; }
-    .pill-off { color: #f87171; font-weight: 700; }
-    .meta { color: var(--muted); font-size: 0.84rem; margin-bottom: 8px; }
+    .pill-on { color: var(--ok); font-weight: 750; }
+    .pill-off { color: var(--err); font-weight: 750; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <div>
-        <h1>Rewind Demo Shop</h1>
-        <div class="sub">Static UI calling FastAPI + SQLite + Flagsmith endpoints</div>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <h1>Rewind Roasters</h1>
+        <span class="sub">Demo Storefront</span>
       </div>
-      <div>
-        <span class="sub" style="margin-right:8px;">Executed path:</span>
-        <span id="version-badge" class="badge badge-none">none</span>
+      <div class="status-group">
+        <span id="vip-badge" class="chip vip-chip" hidden>VIP member</span>
+        <span class="sub">Executed version:</span>
+        <span id="version-badge" class="chip badge-none mono">none</span>
       </div>
-    </header>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="customer-bar" aria-label="Customer switcher">
+      <div class="users" id="user-switcher">
+        <button type="button" data-user="alice" class="active">alice (VIP)</button>
+        <button type="button" data-user="carol">carol (VIP)</button>
+        <button type="button" data-user="bob">bob (standard)</button>
+      </div>
+      <div id="customer-meta" class="sub mono">Loading customer session...</div>
+    </section>
 
     <div id="error-banner" class="error-banner" role="alert"></div>
-    <div id="ok-banner" class="ok-banner"></div>
+    <div id="ok-banner" class="ok-banner" role="status"></div>
 
     <div class="grid">
-      <section class="card">
-        <h2>Customer &amp; Cart</h2>
-        <div class="users" id="user-switcher">
-          <button type="button" data-user="alice" class="active">alice (VIP)</button>
-          <button type="button" data-user="carol">carol (VIP)</button>
-          <button type="button" data-user="bob">bob (control)</button>
-        </div>
+      <div style="display:grid; gap:16px;">
+        <section class="card" aria-label="Product catalog">
+          <h2>Fresh Menu</h2>
+          <div class="catalog">
+            <article class="product">
+              <div>
+                <div class="product-title">House Coffee</div>
+                <div class="product-meta"><span class="mono">coffee</span><strong>$5.00</strong></div>
+              </div>
+              <button type="button" id="btn-add" class="add-item" data-sku="coffee" data-name="House Coffee" data-price="500">+ Add to cart</button>
+            </article>
+            <article class="product">
+              <div>
+                <div class="product-title">Butter Croissant</div>
+                <div class="product-meta"><span class="mono">croissant</span><strong>$4.00</strong></div>
+              </div>
+              <button type="button" class="add-item" data-sku="croissant" data-name="Butter Croissant" data-price="400">+ Add to cart</button>
+            </article>
+            <article class="product">
+              <div>
+                <div class="product-title">Matcha Tea</div>
+                <div class="product-meta"><span class="mono">tea</span><strong>$4.00</strong></div>
+              </div>
+              <button type="button" class="add-item" data-sku="tea" data-name="Matcha Tea" data-price="400">+ Add to cart</button>
+            </article>
+            <article class="product">
+              <div>
+                <div class="product-title">Blueberry Muffin</div>
+                <div class="product-meta"><span class="mono">muffin</span><strong>$3.50</strong></div>
+              </div>
+              <button type="button" class="add-item" data-sku="muffin" data-name="Blueberry Muffin" data-price="350">+ Add to cart</button>
+            </article>
+          </div>
+        </section>
 
-        <div id="customer-meta" class="meta">Loading cart...</div>
+        <section class="card" aria-label="Shopping cart">
+          <h2>Shopping Cart</h2>
+          <table>
+            <thead>
+              <tr><th>SKU</th><th>Item</th><th>Qty</th><th>Price</th></tr>
+            </thead>
+            <tbody id="cart-rows"></tbody>
+          </table>
+          <div class="totals">
+            <span id="total-items">Items: 0</span>
+            <span id="total-price">Total: $0.00</span>
+          </div>
+          <div class="actions">
+            <button type="button" id="btn-checkout" class="primary">Checkout</button>
+            <button type="button" id="btn-eval">Refresh Flags</button>
+            <button type="button" id="btn-reset">Reset Store</button>
+          </div>
+        </section>
+      </div>
 
-        <table>
-          <thead>
-            <tr>
-              <th>SKU</th>
-              <th>Item</th>
-              <th>Qty</th>
-              <th>Price</th>
-            </tr>
-          </thead>
-          <tbody id="cart-rows"></tbody>
-        </table>
-
-        <div class="totals">
-          <span id="total-items">Items: 0</span>
-          <span id="total-price">Total: $0.00</span>
-        </div>
-
-        <div class="actions">
-          <button type="button" id="btn-add">+ Add Coffee ($5.00)</button>
-          <button type="button" id="btn-checkout" class="primary">Checkout</button>
-          <button type="button" id="btn-eval">Refresh Flags</button>
-          <button type="button" id="btn-reset">Reset DB</button>
-        </div>
-      </section>
-
-      <aside class="card">
-        <h2>Live Effective Flags</h2>
-        <div class="meta">Updated from the latest HTTP response</div>
-        <div id="flags-panel"></div>
+      <aside class="card" aria-label="Flagsmith effective flags">
+        <h2>Effective Flags</h2>
+        <div class="sub">Remote evaluation from the latest HTTP response</div>
+        <div id="flags-panel" style="display:grid; gap:8px;"></div>
       </aside>
     </div>
-  </div>
+  </main>
 
   <script>
     const state = { user: "alice" };
@@ -144,10 +296,8 @@
     }
 
     function clearBanners() {
-      const err = document.getElementById("error-banner");
-      const ok = document.getElementById("ok-banner");
-      err.style.display = "none";
-      ok.style.display = "none";
+      document.getElementById("error-banner").style.display = "none";
+      document.getElementById("ok-banner").style.display = "none";
     }
 
     function showError(status, detail) {
@@ -165,7 +315,7 @@
     function renderVersionBadge(ver) {
       const badge = document.getElementById("version-badge");
       badge.textContent = ver || "none";
-      badge.className = "badge " + (
+      badge.className = "chip mono " + (
         ver === "v2" ? "badge-v2" : ver === "legacy" ? "badge-legacy" : "badge-none"
       );
     }
@@ -175,26 +325,28 @@
       panel.innerHTML = "";
       const keys = Object.keys(flags || {});
       if (!keys.length) {
-        panel.innerHTML = '<div class="meta">No flags evaluated yet.</div>';
+        panel.innerHTML = '<div class="sub">No flags evaluated yet.</div>';
         return;
       }
       keys.sort().forEach((k) => {
         const val = Boolean(flags[k]);
         const row = document.createElement("div");
         row.className = "flag-row";
-        row.innerHTML = `<span>${k}</span><span class="${val ? "pill-on" : "pill-off"}">${val}</span>`;
+        row.innerHTML = `<span>${k}</span><span class="${val ? "pill-on" : "pill-off"}">${val ? "ON" : "OFF"}</span>`;
         panel.appendChild(row);
       });
     }
 
     function renderCart(data) {
+      const vip = Boolean(data.traits && data.traits.is_vip);
+      document.getElementById("vip-badge").hidden = !vip;
       document.getElementById("customer-meta").textContent =
-        `user=${data.user_id} | cart=${data.cart_id} | schema=${data.schema_version} | is_vip=${Boolean(data.traits && data.traits.is_vip)}`;
+        `user=${data.user_id} | cart=${data.cart_id} | schema=${data.schema_version}`;
       const tbody = document.getElementById("cart-rows");
       tbody.innerHTML = "";
       (data.items || []).forEach((item) => {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${item.sku}</td><td>${item.name}</td><td>${item.qty}</td><td>${fmtCents(item.price_cents)}</td>`;
+        tr.innerHTML = `<td class="mono">${item.sku}</td><td>${item.name}</td><td>${item.qty}</td><td>${fmtCents(item.price_cents)}</td>`;
         tbody.appendChild(tr);
       });
       document.getElementById("total-items").textContent = "Items: " + (data.total_items || 0);
@@ -251,18 +403,20 @@
       });
     });
 
-    document.getElementById("btn-add").addEventListener("click", () => {
-      postAction("/cart/add", {
-        user_id: state.user,
-        sku: "coffee",
-        name: "House Coffee",
-        quantity: 1,
-        price_cents: 500
-      }, "Added item");
+    document.querySelectorAll(".add-item").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        postAction("/cart/add", {
+          user_id: state.user,
+          sku: btn.dataset.sku,
+          name: btn.dataset.name,
+          quantity: 1,
+          price_cents: Number(btn.dataset.price)
+        }, `Added ${btn.dataset.name}`);
+      });
     });
 
     document.getElementById("btn-checkout").addEventListener("click", () => {
-      postAction("/checkout", { user_id: state.user }, "Checkout HTTP 200");
+      postAction("/checkout", { user_id: state.user }, "Order placed · HTTP 200");
     });
 
     document.getElementById("btn-eval").addEventListener("click", loadUserState);
@@ -272,7 +426,7 @@
       const resp = await fetch("/reset", { method: "POST" });
       if (resp.ok) {
         await loadUserState();
-        showSuccess("Database reset to clean v1 baseline");
+        showSuccess("Store reset to clean v1 baseline");
       } else {
         showError(resp.status, "Reset failed");
       }

@@ -11,19 +11,10 @@ from rich.console import Console
 
 from rewind.report import ReportError, write_report
 from rewind.report.data import describe_write
+from rewind.report.terminal import RunConsole, captured_screen, plain_output
 
 
 REPLAY_SECONDS = 9.0
-
-
-def _approval(gate: dict) -> str:
-    number = gate["gate"]
-    if gate.get("status") == "not reached":
-        return f"Gate {number} — not reached in this captured run"
-    mode = "captured, scripted approval" if gate.get("approval_mode") == "scripted" else "captured approval"
-    decision = gate.get("status", "approved")
-    summary = gate.get("summary")
-    return f"Gate {number} — {mode} ({decision})" + (f"\n{summary}" if summary else "")
 
 
 def _diagnosis(attempt: dict) -> str:
@@ -39,10 +30,10 @@ def _diagnosis(attempt: dict) -> str:
     return result
 
 
-def _events(data: dict) -> list[str]:
+def _events(data: dict, width: int) -> list[str]:
     target = data.get("environments", {}).get("target")
     attempts = iter(data["attempts"])
-    events = [_approval(data["approvals"][0])]
+    events = [captured_screen(data["approvals"][0], None, width=width)]
     target_events = []
     for transition in data["transitions"]:
         phase = f"{transition['label']} · {transition.get('summary', 'No result recorded')}"
@@ -55,7 +46,7 @@ def _events(data: dict) -> list[str]:
                 if attempt is not None:
                     events.append(_diagnosis(attempt))
     events.extend(_diagnosis(attempt) for attempt in attempts)
-    events.append(_approval(data["approvals"][1]))
+    events.append(captured_screen(data["approvals"][1], data["target"]["before"], width=width))
     events.extend(target_events)
     return events
 
@@ -70,15 +61,16 @@ def replay(
         raise ReportError("Captured run is missing; use the repository checkout with docs/captured-runs")
     output = output_root / ".artifacts" / datetime.now(timezone.utc).strftime("demo-%Y%m%dT%H%M%S%fZ")
     report, data = write_report(source, output, captured=True)
-    terminal = console or Console()
+    terminal = console or RunConsole()
     wait = sleep or time.sleep
     terminal.print(f"captured run | Off is not undo. · {capture_name}", style="bold cyan", soft_wrap=True)
     terminal.print("captured run | Playback only. No approvals, network calls, or changes will be made.", soft_wrap=True)
-    events = _events(data)
+    events = _events(data, terminal.width)
     for event in events:
-        terminal.print(f"captured run | {event}", markup=False, highlight=False, soft_wrap=True)
+        line = event if event.startswith("╭") else f"captured run | {event}"
+        terminal.print(plain_output(line), markup=False, highlight=False, soft_wrap=True)
         wait(REPLAY_SECONDS / len(events))
-    terminal.print(f"captured run | Report: {report}", markup=False, highlight=False, soft_wrap=True)
+    terminal.print(f"captured run | Report: {report.relative_to(output_root)}", markup=False, highlight=False, soft_wrap=True)
     final = {
         "verified": "The tested journey was verified on the allowlisted staging target.",
         "refused": "No verified configuration-only recovery found. Target unchanged.",

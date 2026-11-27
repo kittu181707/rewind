@@ -9,6 +9,7 @@ import sys
 from threading import Lock
 from typing import Any, Callable, Iterable, Literal
 
+from rewind.report.terminal import rehearsal_screen, target_screen
 
 ApprovalMode = Literal["human", "scripted"]
 HUMAN_APPROVER = "human (yes)"
@@ -185,9 +186,7 @@ def gate1_rehearsal(
         raise ApprovalError("Gate 1 requires an environment and a positive operation budget")
     mode, label = approval_identity(input_fn, approver, auto_approve=auto_approve)
 
-    output_fn("=== GATE 1: REHEARSAL APPROVAL REQUIRED ===")
-    output_fn(f"Environment: {environment}; maximum Flagsmith operations: {max_operations}")
-    output_fn(summary_text)
+    output_fn(rehearsal_screen(summary_text, environment, max_operations))
     if not auto_approve:
         _confirm('Type "yes" to approve rehearsal changes: ', "Gate 1 rehearsal", mode, input_fn)
 
@@ -232,8 +231,7 @@ def gate2_target(
     rendered = _format_diff_display(diff, operations, snap_hash)
     mode, label = approval_identity(input_fn, approver, auto_approve=auto_approve)
 
-    output_fn("=== GATE 2: TARGET APPROVAL REQUIRED ===")
-    output_fn(rendered)
+    output_fn(target_screen(operations, snap_hash, details))
     if not auto_approve:
         _confirm('Type "yes" to apply this exact plan to target: ', "Gate 2 target", mode, input_fn)
 

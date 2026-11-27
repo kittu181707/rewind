@@ -452,7 +452,7 @@ def _count_writes(runner):
 def test_ordered_gate2_accepts_own_writes_and_real_failure_evidence(tmp_path, monkeypatch):
     ops, runner, token, proof, shown = _target_plan_fixture(tmp_path, monkeypatch)
     assert all(text in shown for text in ("baseline setup", "rollback", "recovery", "target.db", "save test carts",
-                                         "Starting flag state", "recovery runs only if the failure reproduces"))
+                                         "Starting state", "Recovery runs only if the failure reproduces."))
     with ops.approved_target_plan("demo-target", _TARGET_ORDER, token) as replay:
         with pytest.raises(AttributeError):
             token.cursor = 2

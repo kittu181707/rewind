@@ -38,17 +38,18 @@ def main(argv: list[str] | None = None) -> int:
         from rewind.config import ConfigError, load_config
         from rewind.orchestrator import RunError, run_check
         from rewind.report import ReportError, write_report
+        from rewind.report.terminal import RunConsole, plain_output
 
         root = Path.cwd()
         try:
             load_dotenv(root / ".env", override=False)
             config = load_config(args.config)
-            result = run_check(config, root)
+            result = run_check(config, root, console=RunConsole())
             report, _ = write_report(result.evidence, allowed_flags=config.allowed.flags)
             print(f"Report: {report}")
             return result.exit_code
         except (ConfigError, RunError, ReportError) as exc:
-            print(f"rewind check: {exc}", file=sys.stderr)
+            print(plain_output(f"rewind check: {exc}"), file=sys.stderr)
             return 1
     if args.command == "seed":
         if str(REPO_ROOT) not in sys.path:

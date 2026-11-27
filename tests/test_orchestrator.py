@@ -234,7 +234,7 @@ def test_correct_proposal_replays_with_one_yes_at_each_gate(workflow):
         ("checkout_v2", "environment_default", "set_on"), ROLLBACK, FIX,
     ]
     assert [phase for env, phase in apps.events if env == TARGET] == ["reset", "start", "prepare", "verify", "verify", "stop"]
-    assert "recovery runs only if the failure reproduces" in output
+    assert "Recovery runs only if the failure reproduces." in output
     assert "target.db" in output and "Fixture database writes:" in output
     assert audit["llm_calls"][0]["prompt_tokens"] == 5
 

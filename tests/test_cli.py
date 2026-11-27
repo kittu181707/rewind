@@ -54,7 +54,10 @@ def test_cli_check_delegates_and_writes_reports(tmp_path, monkeypatch, capsys) -
     monkeypatch.chdir(tmp_path)
     calls = []
 
-    def fake_check(config, root):
+    def fake_check(config, root, *, console):
+        from rewind.report.terminal import RunConsole
+
+        assert isinstance(console, RunConsole)
         calls.append((config.config_path, root))
         recorded = root / "run.json"
         recorded.write_text('{"status":"verified","approval_mode":"scripted"}')

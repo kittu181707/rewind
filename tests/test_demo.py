@@ -40,4 +40,5 @@ def test_demo_offline_with_environment_cleared(tmp_path, monkeypatch, capsys, ar
     assert "captured run" in report.read_text()
     data = json.loads(report.with_suffix(".json").read_text())
     assert data["status"] == status and data["source"] == "captured run"
-    assert str(report) in output
+    assert f"captured run | Report: {report.relative_to(tmp_path)}" in output
+    assert str(report) not in output and "https://" not in output

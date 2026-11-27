@@ -62,9 +62,18 @@ def test_captured_reports_keep_every_transition_user_and_change(tmp_path, case, 
     if case == "case-b":
         assert "delete override for segment vip_users" in html
         assert "alice and carol still ran the new checkout" in summary
-        assert "Removed the override for segment vip_users on checkout_v2." in summary
+        assert "Remove the override for segment vip_users on checkout_v2 so it inherits the default." in summary
+        assert summary.count("ON → OFF (changed)") == 2
     if case == "case-a":
         assert "alice and carol got HTTP 500" in summary
+        assert summary.count("OFF → ON (changed)") == 3
+    if verdict == "Verified":
+        assert all(label in summary for label in ("Problem found in rehearsal", "Diagnosis:", "Verified fix:", "Who sees what"))
+        before, after = (event["expected_flags"] for event in run["transitions"][1:3])
+        visibility = data["rehearsal_preview"]["visibility"]
+        assert len(visibility) == len(before) * len(data["allowed_flags"])
+        assert all((row["before"], row["after"]) == (before[row["user"]][row["flag"]], after[row["user"]][row["flag"]])
+                   for row in visibility)
     assert run["attempts"][-1]["proposal"]["diagnosis"] in summary
 
 
@@ -76,6 +85,7 @@ def test_display_filter_and_utc_format_do_not_mutate_recorded_approvals():
     assert data["approvals"][1]["operations"] == before["approvals"][1]["operations"]
     assert data["approvals"][1]["snapshot_hash"] == before["approvals"][1]["snapshot_hash"]
     assert all(set(step["effective_flags"]) <= {"checkout_v2"} for event in data["transitions"] for step in event["steps"])
+    assert {row["flag"] for row in data["rehearsal_preview"]["visibility"]} == {"checkout_v2"}
     assert utc_time("2026-11-27T07:23:11.667+05:30") == "2026-11-27 01:53:11 UTC"
 
 

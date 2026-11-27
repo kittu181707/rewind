@@ -30,6 +30,8 @@ table { width:100%; border-collapse:collapse; text-align:left; font-size:.87rem;
 th,td { border-bottom:1px solid var(--line); padding:.45rem .5rem; vertical-align:top; }
 th { font-size:.78rem; }
 td { min-width:3.8rem; }
+.visibility th, .visibility td { padding:.25rem .35rem; }
+.visibility td strong { color:var(--accent); }
 code,pre { font: .81rem/1.5 ui-monospace,monospace; }
 pre { white-space:pre-wrap; overflow-wrap:anywhere; background:var(--bg); padding:.7rem; border-radius:6px; }
 .attempt,.gate { border-top:1px solid var(--line); padding:.55rem 0 .35rem; }
@@ -44,10 +46,11 @@ summary { cursor:pointer; font-weight:650; }
   .facts { gap:.35rem .65rem; font-size:.83rem; line-height:1.35; }
   dt { font-size:.66rem; }
   .scroll table { min-width:33rem; }
+  .scroll .visibility { min-width:0; }
   .pair { grid-template-columns:minmax(0,1fr); }
 }
 </style></head><body><main>
-<section class="summary-card" aria-label="Run summary"><p><strong>After the rollback:</strong> alice and carol got HTTP 500.</p><p><strong>Rejected suggestion:</strong> Legacy checkout fails for users with v2 carts because cart_compat_reader is off, causing schema errors.</p><p><strong>What changed:</strong> No verified fix found: 3 proposals rejected by the verifier. Target unchanged.</p><p><strong>Who approved:</strong> Gate 1: approved · scripted at 2026-11-26 17:40:01 UTC; Gate 2: not reached.</p></section>
+<section class="summary-card" aria-label="Run summary"><p><strong>Problem found in rehearsal:</strong> alice and carol got HTTP 500.</p><p><strong>Rejected suggestion:</strong> Legacy checkout fails for users with v2 carts because cart_compat_reader is off, causing schema errors.</p><p><strong>What changed:</strong> No verified fix found: 3 proposals rejected by the verifier. Target unchanged.</p><p><strong>Who approved:</strong> Gate 1: approved · scripted at 2026-11-26 17:40:01 UTC; Gate 2: not reached.</p></section>
 <header><p class="eyebrow">REWIND / captured run / scripted validation run</p><h1>Off is not undo.</h1>
 <p class="verdict ">Verdict: Refused</p><dl class="facts"><div><dt>Model</dt><dd>groq/openai/gpt-oss-120b</dd></div><div><dt>Approval mode</dt><dd>scripted</dd></div><div><dt>Rehearsal</dt><dd>rehearsal</dd></div><div><dt>Target</dt><dd>demo-target</dd></div><div><dt>Total time</dt><dd>110.691 s</dd></div><div><dt>Evidence source</dt><dd>captured run</dd></div></dl></header>
 

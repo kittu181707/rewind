@@ -146,24 +146,58 @@ def _people(names: list[str]) -> str:
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
 
+def failure_summary(failure: dict | None) -> str:
+    if not failure:
+        return "No failed rollback was recorded."
+    checkouts = [step for step in failure.get("steps", []) if step.get("name") == "checkout"]
+    errors: dict[int, list[str]] = {}
+    for step in checkouts:
+        http = step.get("http_status")
+        if isinstance(http, int) and 400 <= http <= 599:
+            errors.setdefault(http, []).append(step["user"])
+    wrong_version = {item.get("user") for item in failure.get("failed_assertions", [])
+                     if item.get("assertion") in {"executed_version_matches_goal", "direct_executed_version_matches_goal"}}
+    new_checkout = [step["user"] for step in checkouts if step.get("executed_version") == "v2" and step["user"] in wrong_version]
+    observations = [f"{_people(users)} got HTTP {http}" for http, users in errors.items()]
+    if new_checkout:
+        observations.append(f"{_people(new_checkout)} still ran the new checkout")
+    return "; ".join(observations) + "." if observations else failure.get("summary") or "The recorded journey did not pass."
+
+
+def rehearsal_preview(run: dict, allowed_flags: Iterable[str]) -> dict:
+    """Use expected flags already calculated by the planner and checked in rehearsal."""
+    proposal = next((attempt.get("proposal") for attempt in reversed(run.get("attempts", []))
+                     if attempt.get("status") == "verified"), None)
+    if not proposal:
+        return {}
+    rehearsal = run.get("environments", {}).get("rehearsal")
+    events = [event for event in run.get("transitions", []) if event.get("environment") == rehearsal]
+    verified_index = next((index for index in reversed(range(len(events))) if events[index].get("ok")
+                           and events[index]["label"].endswith("verify candidate")), len(events))
+    failure = rollback_failure(list(reversed(events[:verified_index])))
+    candidate = events[verified_index] if verified_index < len(events) else {}
+    before, after = (failure or {}).get("expected_flags", {}), candidate.get("expected_flags", {})
+    flag, scope, operation = (proposal[name] for name in ("flag", "scope", "operation"))
+    fix = describe_write(flag, scope, operation) + "."
+    if operation == "delete_override":
+        kind, _, name = scope.partition(":")
+        fix = f"Remove the override for {kind} {name} on {flag} so it inherits the default."
+    rows = [{"user": user, "flag": name, "before": before.get(user, {}).get(name), "after": after.get(user, {}).get(name)}
+            for user in sorted(before.keys() | after.keys()) for name in allowed_flags]
+    return {"problem": failure_summary(failure), "diagnosis": proposal.get("diagnosis"), "fix": fix, "visibility": rows}
+
+
+def flag_value(value: bool | None) -> str:
+    return {True: "ON", False: "OFF", None: "Not recorded"}[value]
+
+
+def flag_changed(row: dict) -> bool:
+    return row["before"] is not None and row["after"] is not None and row["before"] != row["after"]
+
+
 def _summary(data: dict) -> tuple[tuple[str, str], ...]:
-    failure = rollback_failure(data["transitions"])
-    observed = "No failed rollback was recorded."
-    if failure:
-        checkouts = [step for step in failure["steps"] if step.get("name") == "checkout"]
-        errors: dict[int, list[str]] = {}
-        for step in checkouts:
-            http = step.get("http_status")
-            if isinstance(http, int) and 400 <= http <= 599:
-                errors.setdefault(http, []).append(step["user"])
-        wrong_version = {item.get("user") for item in failure["failed_assertions"]
-                         if item.get("assertion") in {"executed_version_matches_goal", "direct_executed_version_matches_goal"}}
-        new_checkout = [step["user"] for step in checkouts
-                        if step.get("executed_version") == "v2" and step["user"] in wrong_version]
-        observations = [f"{_people(users)} got HTTP {http}" for http, users in errors.items()]
-        if new_checkout:
-            observations.append(f"{_people(new_checkout)} still ran the new checkout")
-        observed = "; ".join(observations) + "." if observations else "The recorded journey did not pass."
+    preview = data["rehearsal_preview"]
+    observed = preview.get("problem") or failure_summary(rollback_failure(data["transitions"]))
     attempts = data["attempts"]
     label, found = "Diagnosis", "No diagnosis recorded."
     for attempt in reversed(attempts):
@@ -171,7 +205,7 @@ def _summary(data: dict) -> tuple[tuple[str, str], ...]:
         if attempt.get("status") == "no_fix":
             diagnosis = attempt.get("reason")
         if diagnosis:
-            label = "What Rewind found" if attempt.get("status") == "verified" else attempt["suggestion_label"]
+            label = attempt["suggestion_label"]
             found = diagnosis
             break
 
@@ -180,16 +214,10 @@ def _summary(data: dict) -> tuple[tuple[str, str], ...]:
         failures = sum(attempt.get("status") == "failed" for attempt in attempts)
         count = f": {failures} {'proposal' if failures == 1 else 'proposals'} rejected by the verifier" if failures else ""
         changed = f"No verified fix found{count}. Target unchanged."
-    else:
+    elif data["status"] != "verified":
         target = data.get("environments", {}).get("target")
         writes = [change for change in data["changes"] if change.get("environment") == target and change.get("kind") == "flag"]
-        if data["status"] == "verified" and writes:
-            last = writes[-1]
-            changed = describe_write(last["flag"], last["scope"], last["operation"]) + "."
-            if last["operation"] == "delete_override":
-                kind, _, name = last["scope"].partition(":")
-                changed = f"Removed the override for {kind} {name} on {last['flag']}."
-        elif writes:
+        if writes:
             changed = "Stopped during target writes. See Changes made for the recorded outcomes."
 
     approvals = []
@@ -205,7 +233,9 @@ def _summary(data: dict) -> tuple[tuple[str, str], ...]:
         approvals.append(f"Gate {gate['gate']}: {detail}")
     request = data.get("request") or {}
     request_line = (("Request", f'{request["text"]} — {request["interpretation"]}'),) if request else ()
-    return (*request_line, ("After the rollback", observed), (label, found), ("What changed", changed),
+    fix_line = (("Verified fix", preview["fix"]),) if preview else ()
+    target_line = () if preview and data["status"] == "verified" else (("What changed", changed),)
+    return (*request_line, ("Problem found in rehearsal", observed), (label, found), *fix_line, *target_line,
             ("Who approved", "; ".join(approvals) + "."))
 
 
@@ -224,6 +254,7 @@ def public_report(run: dict, *, captured: bool = False, allowed_flags: Iterable[
         "allowed_flags": sorted(allowed),
         "capture": _fields(run.get("capture") or {}, "label", "case", "scenario", "validated_commit"),
         "request": _fields(run.get("request") or {}, "text", "flag", "direction", "interpretation"),
+        "rehearsal_preview": rehearsal_preview(run, sorted(allowed)),
         "transitions": [{
             **_fields(event, "label", "environment", "timestamp", "phase", "summary", "ok"),
             "steps": [_observation(step, allowed) for step in event.get("steps", [])],

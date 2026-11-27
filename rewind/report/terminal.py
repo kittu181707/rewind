@@ -12,7 +12,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from rewind.report.data import describe_write
+from rewind.report.data import describe_write, flag_changed, flag_value
 
 
 _URL = re.compile(r"\b(?:https?|ftp|file)://[^\s\"'<>]+", re.IGNORECASE)
@@ -157,7 +157,20 @@ def target_screen(
     for step, (flag, scope, operation) in enumerate(operations, 1):
         stage = stages[step - 1] if step <= len(stages) else "—"
         writes.add_row(*(_text(str(value)) for value in (step, stage, flag, _scope(scope), _operation_text(scope, operation))))
-    parts = [_text(f"Environment: {details.get('environment') or 'configured target'}"), writes, _text("Starting state")]
+    parts = []
+    preview = details.get("preview")
+    if preview:
+        parts.extend(_text(f"{label}: {preview[key]}") for key, label in (
+            ("problem", "Problem found in rehearsal"), ("diagnosis", "Diagnosis"), ("fix", "Verified fix"),
+        ))
+        if preview["visibility"]:
+            visibility = _table("User", "Flag", "Before fix → After fix")
+            for row in preview["visibility"]:
+                before, after = flag_value(row["before"]), flag_value(row["after"])
+                change = " (changed)" if flag_changed(row) else ""
+                visibility.add_row(_text(row["user"]), _text(row["flag"]), _text(f"{before} → {after}{change}"))
+            parts.extend((_text("Who sees what"), visibility))
+    parts.extend((_text(f"Environment: {details.get('environment') or 'configured target'}"), writes, _text("Starting state")))
     state = details.get("starting_state") or {}
     if state.get("flags"):
         flags = _table("Flag", "Default", "Overrides")
@@ -184,7 +197,7 @@ def target_screen(
     return _panel(title, parts, width)
 
 
-def captured_screen(gate: dict, before: dict | None, *, width: int) -> str:
+def captured_screen(gate: dict, before: dict | None, *, width: int, preview: dict | None = None) -> str:
     number = gate["gate"]
     if gate.get("status") == "not reached":
         return f"Gate {number} — not reached in this captured run"
@@ -197,7 +210,7 @@ def captured_screen(gate: dict, before: dict | None, *, width: int) -> str:
     lines = summary.splitlines()
     recorded_state = next((line.removeprefix("Starting flag state: ") for line in lines if line.startswith("Starting flag state: ")), "")
     state = _literal(recorded_state)
-    details = {"environment": environment, "starting_state": state if isinstance(state, dict) else before,
+    details = {"environment": environment, "starting_state": state if isinstance(state, dict) else before, "preview": preview,
                "db_path": next((line.removeprefix("Target fixture DB: ") for line in lines if line.startswith("Target fixture DB: ")), None),
                "fixture_writes": [line.removeprefix("  - ") for line in lines if line.startswith("  - ")],
                "stages": [match[1] for line in lines if (match := _STAGE.match(line))]}

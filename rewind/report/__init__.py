@@ -7,7 +7,7 @@ from html import escape
 import json
 from pathlib import Path
 
-from rewind.report.data import VERDICTS, describe_write, public_report, rollback_failure
+from rewind.report.data import VERDICTS, describe_write, flag_changed, flag_value, public_report, rollback_failure
 
 
 class ReportError(ValueError):
@@ -43,6 +43,8 @@ table { width:100%; border-collapse:collapse; text-align:left; font-size:.87rem;
 th,td { border-bottom:1px solid var(--line); padding:.45rem .5rem; vertical-align:top; }
 th { font-size:.78rem; }
 td { min-width:3.8rem; }
+.visibility th, .visibility td { padding:.25rem .35rem; }
+.visibility td strong { color:var(--accent); }
 code,pre { font: .81rem/1.5 ui-monospace,monospace; }
 pre { white-space:pre-wrap; overflow-wrap:anywhere; background:var(--bg); padding:.7rem; border-radius:6px; }
 .attempt,.gate { border-top:1px solid var(--line); padding:.55rem 0 .35rem; }
@@ -57,6 +59,7 @@ summary { cursor:pointer; font-weight:650; }
   .facts { gap:.35rem .65rem; font-size:.83rem; line-height:1.35; }
   dt { font-size:.66rem; }
   .scroll table { min-width:33rem; }
+  .scroll .visibility { min-width:0; }
   .pair { grid-template-columns:minmax(0,1fr); }
 }
 """
@@ -78,6 +81,26 @@ def _table(headers: tuple[str, ...], rows: list[tuple], *, label: str, empty: st
 def _flag_states(flags: dict) -> str | None:
     return ", ".join(f"{key}: {'ON' if value is True else 'OFF' if value is False else value}"
                      for key, value in sorted(flags.items())) or None
+
+
+def _visibility_table(rows: list[dict]) -> str:
+    if not rows:
+        return ""
+    flags: dict[str, None] = {}
+    users: dict[str, dict[str, str]] = {}
+    for row in rows:
+        flags[row["flag"]] = None
+        value = f'{flag_value(row["before"])} → {flag_value(row["after"])}'
+        users.setdefault(row["user"], {})[row["flag"]] = (
+            f'<strong>{_text(value)} (changed)</strong>' if flag_changed(row) else _text(value)
+        )
+    head = '<th scope="col">User</th>' + "".join(f'<th scope="col">{_text(flag)}</th>' for flag in flags)
+    body = "".join(f'<tr><th scope="row">{_text(user)}</th>' +
+                   "".join(f"<td>{values.get(flag, '—')}</td>" for flag in flags) + "</tr>"
+                   for user, values in users.items())
+    return ('<div class="scroll" role="region" aria-label="Who sees what" tabindex="0">'
+            '<table class="visibility"><caption>Who sees what · Before fix → After fix</caption>'
+            f'<thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>')
 
 
 def _timeline(events: list[dict]) -> str:
@@ -197,6 +220,7 @@ def render_html(data: dict) -> str:
     status_class = "verified" if data["status"] == "verified" else ""
     summary = "".join(f"<p><strong>{_text(label)}:</strong> {_text(line)}</p>" for label, line in zip(
         data["summary_labels"], data["summary_lines"]))
+    summary += _visibility_table(data["rehearsal_preview"].get("visibility", []))
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">

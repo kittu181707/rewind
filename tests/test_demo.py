@@ -37,6 +37,7 @@ def test_demo_offline_with_environment_cleared(tmp_path, monkeypatch, capsys, ar
     if status == "verified":
         assert "Diagnosis:" in output and "Rejected suggestion:" not in output
         assert "Gate 2 — captured, scripted approval" in output
+        assert "Problem found in rehearsal:" in output and "Verified fix:" in output and "Who sees what" in output
         assert "Target: verify after recovery" in output
     else:
         assert output.count("Rejected suggestion:") == 3 and "Diagnosis:" not in output

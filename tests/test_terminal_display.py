@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from rewind import approvals
+from rewind.report.data import public_report
 from rewind.report.terminal import RunConsole, captured_screen
 from rewind.verifier import VerificationResult
 
@@ -41,14 +42,19 @@ def test_approval_tokens_match_before_and_after_prettifying_the_prompt(monkeypat
         old.setattr(approvals, "rehearsal_screen", lambda plan, *_: plan)
         old.setattr(approvals, "target_screen", lambda ops, digest, details: approvals._format_diff_display(details, ops, digest))
         old_tokens = mint(lambda _: None)
+    preview = {"problem": "Customer still ran the new experience", "diagnosis": "Tier override is still on",
+               "fix": "Remove the override for this tier", "visibility": [
+                   {"user": "customer", "flag": "feature", "before": True, "after": False},
+               ]}
+    diff["preview"] = preview
     output = []
     assert mint(output.append) == old_tokens
-    assert diff == before and tuple(ordered) == old_tokens[1]["operations"]
+    assert diff == {**before, "preview": preview} and tuple(ordered) == old_tokens[1]["operations"]
     assert old_tokens[1]["snapshot_hash"] == snapshot_hash and old_tokens[1]["recovery_index"] == 2
     assert snapshot_hash in old_tokens[1]["summary"] and snapshot_hash not in output[1]
     assert snapshot_hash[:12] in output[1] and "Recovery runs only if the failure reproduces." in output[1]
     assert "Rollback: feature: set default OFF" in output[0] and "('feature'" not in output[0]
-    assert len(output[1].splitlines()) <= 30
+    assert "Problem found in rehearsal:" in output[1] and "ON → OFF (changed)" in output[1]
 
 
 def test_captured_target_preview_hides_repr_and_urls_and_keeps_order():
@@ -56,11 +62,13 @@ def test_captured_target_preview_hides_repr_and_urls_and_keeps_order():
     run = json.loads((root / "docs/captured-runs/case-b/run.json").read_text())
     gate = run["approvals"][1]
     before = deepcopy(gate)
-    text = captured_screen(gate, run["capture"]["target_before"], width=80)
+    text = captured_screen(gate, run["capture"]["target_before"], width=80, preview=public_report(run)["rehearsal_preview"])
     assert gate == before
     assert all(part in text for part in ("Step", "baseline setup", "rollback", "recovery", "Starting state", "Remove override"))
-    assert text.index("baseline setup") < text.index("rollback") < text.index("recovery")
-    assert "https://" not in text and "{'" not in text and "…" not in text and len(text.splitlines()) <= 30
+    operations = text.split("Step", 1)[1].split("Starting state", 1)[0]
+    assert operations.index("baseline setup") < operations.index("rollback") < operations.index("recovery")
+    assert "https://" not in text and "{'" not in text and "…" not in text
+    assert "Who sees what" in text and all(len(line) <= 80 for line in text.splitlines())
 
 
 def test_terminal_change_message_keeps_scope_and_status_without_raw_details():

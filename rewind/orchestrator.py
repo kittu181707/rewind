@@ -28,6 +28,7 @@ from rewind.approvals import (
 from rewind.config import RewindConfig
 from rewind.flagsmith_ops import CommandRecord, FlagsmithOps, FlagsmithOpsError
 from rewind.planning import Operation, PlanningError, configuration, difference, effective_by_user, project
+from rewind.report.data import rehearsal_preview
 from rewind.request import RollbackRequest
 from rewind.snapshot import EnvironmentSnapshot, take_snapshot
 from rewind.verifier import VerificationResult, verify_journey
@@ -448,6 +449,7 @@ class _Run:
             "fixture_writes": self.config.app.fixture_writes,
             "recovery_index": len(operations) - 1, "rehearsal_failure": failure,
             "reproduction_flags": self.config.allowed.flags,
+            "preview": self.clean(rehearsal_preview(self.data, self.config.allowed.flags)),
         }
         with self.time("Gate 2 exact target approval"):
             token = gate2_target(proof, start.hash, approver=self.approver, input_fn=self.input_fn, output_fn=self.say)

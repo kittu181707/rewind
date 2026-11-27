@@ -32,7 +32,8 @@ def _events(data: dict, width: int) -> list[str]:
                 if attempt is not None:
                     events.append(attempt_display(attempt))
     events.extend(attempt_display(attempt) for attempt in attempts)
-    events.append(captured_screen(data["approvals"][1], data["target"]["before"], width=width))
+    events.append(captured_screen(data["approvals"][1], data["target"]["before"], width=width,
+                                  preview=data["rehearsal_preview"]))
     events.extend(target_events)
     return events
 
@@ -49,17 +50,17 @@ def replay(
     report, data = write_report(source, output, captured=True)
     terminal = console or RunConsole()
     wait = sleep or time.sleep
-    terminal.print(f"captured run | Off is not undo. · {capture_name}", style="bold cyan", soft_wrap=True)
-    terminal.print("captured run | Playback only. No approvals, network calls, or changes will be made.", soft_wrap=True)
+    terminal.print(f"captured run | Off is not undo. · {capture_name}", style="bold cyan")
+    terminal.print("captured run | Playback only. No network, approvals, or changes.")
     events = _events(data, terminal.width)
     for event in events:
         line = event if event.startswith("╭") else f"captured run | {event}"
-        terminal.print(plain_output(line), markup=False, highlight=False, soft_wrap=True)
+        terminal.print(plain_output(line), markup=False, highlight=False, overflow="fold")
         wait(REPLAY_SECONDS / len(events))
-    terminal.print(f"captured run | Report: {report.relative_to(output_root)}", markup=False, highlight=False, soft_wrap=True)
+    terminal.print(f"captured run | Report: {report.relative_to(output_root)}", markup=False, highlight=False)
     final = {
         "verified": "The tested journey was verified on the allowlisted staging target.",
         "refused": "No verified configuration-only recovery found. Target unchanged.",
     }.get(data["status"], f"Verdict: {data['verdict']}")
-    terminal.print(f"captured run | {final}", style="bold", markup=False, highlight=False, soft_wrap=True)
+    terminal.print(f"captured run | {final}", style="bold", markup=False, highlight=False, overflow="fold")
     return report

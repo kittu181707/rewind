@@ -30,6 +30,8 @@ table { width:100%; border-collapse:collapse; text-align:left; font-size:.87rem;
 th,td { border-bottom:1px solid var(--line); padding:.45rem .5rem; vertical-align:top; }
 th { font-size:.78rem; }
 td { min-width:3.8rem; }
+.visibility th, .visibility td { padding:.25rem .35rem; }
+.visibility td strong { color:var(--accent); }
 code,pre { font: .81rem/1.5 ui-monospace,monospace; }
 pre { white-space:pre-wrap; overflow-wrap:anywhere; background:var(--bg); padding:.7rem; border-radius:6px; }
 .attempt,.gate { border-top:1px solid var(--line); padding:.55rem 0 .35rem; }
@@ -44,10 +46,11 @@ summary { cursor:pointer; font-weight:650; }
   .facts { gap:.35rem .65rem; font-size:.83rem; line-height:1.35; }
   dt { font-size:.66rem; }
   .scroll table { min-width:33rem; }
+  .scroll .visibility { min-width:0; }
   .pair { grid-template-columns:minmax(0,1fr); }
 }
 </style></head><body><main>
-<section class="summary-card" aria-label="Run summary"><p><strong>After the rollback:</strong> alice and carol still ran the new checkout.</p><p><strong>What Rewind found:</strong> Segment override for vip_users forces checkout_v2 on, overriding the rollback to off.</p><p><strong>What changed:</strong> Removed the override for segment vip_users on checkout_v2.</p><p><strong>Who approved:</strong> Gate 1: approved · scripted at 2026-11-27 01:53:02 UTC; Gate 2: approved · scripted at 2026-11-27 01:53:37 UTC.</p></section>
+<section class="summary-card" aria-label="Run summary"><p><strong>Problem found in rehearsal:</strong> alice and carol still ran the new checkout.</p><p><strong>Diagnosis:</strong> Segment override for vip_users forces checkout_v2 on, overriding the rollback to off.</p><p><strong>Verified fix:</strong> Remove the override for segment vip_users on checkout_v2 so it inherits the default.</p><p><strong>Who approved:</strong> Gate 1: approved · scripted at 2026-11-27 01:53:02 UTC; Gate 2: approved · scripted at 2026-11-27 01:53:37 UTC.</p><div class="scroll" role="region" aria-label="Who sees what" tabindex="0"><table class="visibility"><caption>Who sees what · Before fix → After fix</caption><thead><tr><th scope="col">User</th><th scope="col">cart_compat_reader</th><th scope="col">checkout_v2</th></tr></thead><tbody><tr><th scope="row">alice</th><td>ON → ON</td><td><strong>ON → OFF (changed)</strong></td></tr><tr><th scope="row">bob</th><td>ON → ON</td><td>OFF → OFF</td></tr><tr><th scope="row">carol</th><td>ON → ON</td><td><strong>ON → OFF (changed)</strong></td></tr></tbody></table></div></section>
 <header><p class="eyebrow">REWIND / captured run / scripted validation run</p><h1>Off is not undo.</h1>
 <p class="verdict verified">Verdict: Verified</p><dl class="facts"><div><dt>Model</dt><dd>groq/openai/gpt-oss-120b</dd></div><div><dt>Approval mode</dt><dd>scripted</dd></div><div><dt>Rehearsal</dt><dd>rehearsal</dd></div><div><dt>Target</dt><dd>demo-target</dd></div><div><dt>Total time</dt><dd>98.122 s</dd></div><div><dt>Evidence source</dt><dd>captured run</dd></div></dl></header>
 

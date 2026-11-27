@@ -175,3 +175,21 @@ python -m scripts.validate_live --batch refusal-protocol
 python -m scripts.validate_live --batch case-b
 python -m scripts.verify_e2e
 ```
+
+## 6. Presentation, UI, & Final Release Validation (`final-candidate-2`)
+
+All presentation, UI design, customer-view, storefront/report restyling, and asset verification commits stacked on `final-candidate` (`dd87bf8`):
+
+- `47d8ba2 chore(repo): consolidate validation docs, add connect-your-app guide, untrack AGENTS.md, and rename scripts`
+- `0e62d5b docs(readme): rewrite concise 70-line README with Flagsmith links and TODO markers`
+- `9c64223 style(ui): replace starter CSS with token-based design system and 360px support`
+- `e546e58 feat(ui): implement topbar, Flagsmith inventory rows, vertical timeline, and mobile gate layout`
+- `6507cd7 feat(ui): render per-user customer view from recorded journey steps in live and replay UI`
+- `b2d5bf1 style(shop,report): restyle demo shop storefront and align HTML report styling with UI design tokens`
+- `a06f7a7 docs(ui,reports): regenerate replay bundle, sample reports, and verified screenshots`
+- `fd568d1 docs(demo): add live port 8003 storefront walkthrough beside Gate 2 replay`
+
+- **Offline suite:** `python -m pytest -q -m 'not live'` -> **147 passed**.
+- **Browser verification (Playwright Chromium):** Case A and Case B replayed through both approvals via keyboard (`Enter`); Refusal verified at `360x760` dark with zero overflow; regenerated `docs/screens/*.png` all verified under `300 KB`; live scripted Case A via `rewind ui` verified cleanly.
+- **Optional live storefront alongside replay:** Port `8003` (`docs/live-shop-demo.md`) measured a **10.66 s** HTTP 500 window (`measured once`) without touching target drift snapshots or approvals.
+- **Frozen hashes & secret scan:** All five frozen files match `agent-freeze-2` SHA-256 bytes verbatim; tree and Git history secret scans recorded zero matches across all `.env` keys and zero auth/launcher tokens.

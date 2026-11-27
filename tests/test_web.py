@@ -1,11 +1,14 @@
 """Exercise the browser gate boundary with the real runner and in-memory Flagsmith."""
 
+import asyncio
 from functools import partial
 import json
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 import pytest
 
+from rewind.events import RunEvent
 from rewind.orchestrator import run_check
 from rewind.request import RollbackRequest
 from rewind.web import server
@@ -43,6 +46,38 @@ def test_token_host_origin_and_only_the_allowed_request_fields(tmp_path, workflo
                            json={"gate_id": "test", "decision": "approve"}).status_code == 403
         invalid = send(client, "/api/run", {"text": "roll back", "command": "invalid"})
         assert invalid.status_code == 422 and "command" not in invalid.text
+
+
+def test_event_stream_sends_an_unnumbered_keepalive_every_15_seconds(tmp_path, workflow, monkeypatch):
+    _, _, _, apps = workflow
+    state = LiveRun()
+    app = server.create_app(tmp_path, ROOT, TOKEN, 8765, config=apps.config, state=state)
+    endpoint = next(route.endpoint for route in app.routes if route.path == "/api/events")
+    now = 0.0
+
+    async def advance(seconds):
+        nonlocal now
+        now = round(now + seconds, 1)
+
+    monkeypatch.setattr(server, "monotonic", lambda: now)
+    monkeypatch.setattr(server, "asyncio", SimpleNamespace(sleep=advance))
+
+    async def verify():
+        nonlocal now
+        stream = endpoint().body_iterator
+        try:
+            assert await anext(stream) == ": connected\n\n"
+            for index, deadline in enumerate((15, 30), 1):
+                now = deadline - 0.4
+                state.observe(RunEvent("progress", {"text": "Working"}))
+                assert await anext(stream) == f'id: {index}\ndata: {{"type": "progress", "data": {{"text": "Working"}}}}\n\n'
+                assert await anext(stream) == ": keepalive\n\n"
+                assert now == deadline
+        finally:
+            await stream.aclose()
+        assert state.subscribers == 0
+
+    asyncio.run(verify())
 
 
 def _start_case(tmp_path, workflow, monkeypatch, timeout):

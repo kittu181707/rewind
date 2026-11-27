@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from secrets import compare_digest
 from subprocess import SubprocessError
+from time import monotonic
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
@@ -149,11 +150,16 @@ def create_app(root: Path, repository: Path, token: str, port: int, *, config: R
         async def stream():
             state.subscribe()
             cursor = 0
+            keepalive_at = monotonic() + 15
             try:
                 yield ": connected\n\n"
                 while True:
                     for cursor, event in state.messages(cursor):
                         yield f"id: {cursor}\ndata: {json.dumps(asdict(event))}\n\n"
+                    now = monotonic()
+                    if now >= keepalive_at:
+                        keepalive_at = now + 15
+                        yield ": keepalive\n\n"
                     await asyncio.sleep(0.2)
             finally:
                 state.disconnect()

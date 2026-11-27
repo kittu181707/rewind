@@ -26,10 +26,11 @@ from rewind.approvals import (
     ApprovalError, ApprovalToken, approval_identity, approval_uses, close_rehearsal, gate1_rehearsal, gate2_target,
 )
 from rewind.config import RewindConfig
+from rewind.events import EventType, RunEvent, attempt_event, failure_event, starting_flags
 from rewind.flagsmith_ops import CommandRecord, FlagsmithOps, FlagsmithOpsError
 from rewind.ledger import autonomy_ledger, ledger_breakdown, ledger_summary
 from rewind.planning import Operation, PlanningError, configuration, difference, effective_by_user, project
-from rewind.report.data import rehearsal_preview
+from rewind.report.data import describe_write, redact_event, rehearsal_preview
 from rewind.request import RollbackRequest
 from rewind.snapshot import EnvironmentSnapshot, take_snapshot
 from rewind.verifier import VerificationResult, verify_journey
@@ -193,10 +194,11 @@ def _reason(result: VerificationResult, goal_version: str) -> str:
 
 class _Run:
     def __init__(self, config, root: Path, ops, model, apps, console, input_fn, approver: str | None,
-                 request: RollbackRequest | None) -> None:
+                 request: RollbackRequest | None, observer: Callable[[RunEvent], None] | None) -> None:
         self.config, self.root, self.ops, self.model, self.apps = config, root, ops, model, apps
         self.console, self.input_fn = console, input_fn
         self.request = request
+        self.observer = observer
         self.approval_mode, self.approver = approval_identity(input_fn, approver)
         assert config.agent is not None
         self.max_attempts = config.agent.max_attempts
@@ -237,9 +239,18 @@ class _Run:
     def say(self, text: str) -> None:
         self.console.print(self.clean(text), markup=False, highlight=False, overflow="fold")
 
-    def show_approval(self, text: str) -> None:
+    def emit(self, kind: EventType, data: dict) -> None:
+        if self.observer is not None:
+            try:
+                self.observer(RunEvent(kind, redact_event(self.clean(data))))
+            except Exception:
+                # An observer cannot affect what runs or what gets approved.
+                pass
+
+    def show_approval(self, text: str, details: dict) -> None:
         self.data["approval_requests"].append({"gate": self.gate, "timestamp": _now()})
         self.say(text)
+        self.emit("gate", {"gate": self.gate, **details})
 
     def save(self) -> dict[str, int]:
         payload = {**self.data, "elapsed_seconds": round(time.perf_counter() - self.started, 3),
@@ -256,6 +267,7 @@ class _Run:
     def time(self, phase: str):
         start = time.perf_counter()
         self.say(f"→ {phase}")
+        self.emit("progress", {"text": phase})
         try:
             yield
         finally:
@@ -338,6 +350,8 @@ class _Run:
                                              "db_path": str(instance.db), "user": step["user"],
                                              "step": step["name"], "details": step["fixture_write"], "timestamp": _now()})
         self.say(result.summary)
+        if self.observer is not None and instance == self.rehearsal and label.endswith("verify before recovery") and not result.ok:
+            self.emit("failure", failure_event(self.data["transitions"][-1]))
         self.save()
         if phase == "prepare" and not result.ok:
             raise RunError(f"{self.config.app.journey} (prepare): {result.summary}\n{result.stderr}".strip())
@@ -360,8 +374,17 @@ class _Run:
             summary = f"{self.request.understood}\n{summary}"
         self.ops.validate_operation(instance.environment, *self.rollback)
         with self.time("Gate 1 rehearsal approval"):
+            details = {"environment": instance.environment, "summary": (
+                f"Reset the test fixture and run the configured journey in {instance.environment}.\n"
+                f"Rollback: {describe_write(*self.rollback)}.\n"
+                f"Up to {self.max_attempts} proposed fixes. At most {max_ops} Flagsmith writes.\n"
+                f"Allowed flags: {', '.join(self.config.allowed.flags)}.\n"
+                f"Allowed scopes: {', '.join(self.config.allowed.scopes)}.\n"
+                f"Allowed operations: {', '.join(self.config.allowed.operations)}."
+            )} if self.observer is not None else {}
             token = gate1_rehearsal(summary, environment=instance.environment, max_operations=max_ops,
-                                     approver=self.approver, input_fn=self.input_fn, output_fn=self.show_approval)
+                                     approver=self.approver, input_fn=self.input_fn,
+                                     output_fn=lambda text: self.show_approval(text, details))
         try:
             self.approval(token, instance)
             self.require_environment_binding(instance)
@@ -398,6 +421,8 @@ class _Run:
                                "proposal": asdict(proposal) if proposal else None, "messages": decision.messages}
                     self.data["attempts"].append(attempt)
                     self.say(f"Attempt {number}: {decision.reason}")
+                    if self.observer is not None:
+                        self.emit("attempt", attempt_event(attempt))
                     self.save()
                     if decision.status == "no_fix":
                         return None
@@ -431,6 +456,8 @@ class _Run:
                                     raise RunError("Rehearsal baseline did not restore exactly; stop and inspect drift")
                                 self.reset(instance)
                                 needs_prepare = True
+                    if self.observer is not None and attempt["status"] in {"invalid", "failed"}:
+                        self.emit("attempt", attempt_event(attempt))
                     previous.append({key: attempt[key] for key in ("number", "status", "reason", "proposal")})
             return None
         finally:
@@ -461,8 +488,14 @@ class _Run:
             "preview": self.clean(rehearsal_preview(self.data, self.config.allowed.flags)),
         }
         with self.time("Gate 2 exact target approval"):
+            details = {"environment": instance.environment, "preview": proof["preview"], "snapshot_hash": start.hash,
+                       "summary": f"The rehearsal failure must reproduce before recovery. Fixture: {instance.db}",
+                       "starting_flags": starting_flags(start.state),
+                       "fixture_writes": proof["fixture_writes"],
+                       "writes": [{"stage": stage, "text": describe_write(*operation)}
+                                  for stage, operation in zip(proof["stages"], operations)]} if self.observer is not None else {}
             token = gate2_target(proof, start.hash, approver=self.approver, input_fn=self.input_fn,
-                                 output_fn=self.show_approval)
+                                 output_fn=lambda text: self.show_approval(text, details))
         audit = self.approval(token, instance)
         try:
             with self.ops.approved_target_plan(instance.environment, operations, token) as replay:
@@ -492,6 +525,8 @@ class _Run:
 
     def run(self) -> CheckResult:
         try:
+            if self.request is not None:
+                self.emit("interpretation", self.data["request"])
             rehearsal_key = self.config.env_key_for(self.rehearsal.environment)
             if rehearsal_key == os.getenv(self.config.flagsmith.target.key_env, "").strip():
                 raise RunError("Rehearsal and target use the same SDK key; isolation is not established")
@@ -535,6 +570,7 @@ def run_check(
     config: RewindConfig, root: Path, *, ops: FlagsmithOps | None = None, model: ChatModel | None = None,
     apps: LocalApp | None = None, console: Console | None = None, input_fn: Callable[[str], str] = input,
     approver: str | None = None, request: RollbackRequest | None = None,
+    observer: Callable[[RunEvent], None] | None = None,
 ) -> CheckResult:
     if config.agent is None or not 1 <= config.agent.max_attempts <= 3:
         raise RunError("Configure an agent with one to three recovery attempts")
@@ -542,4 +578,4 @@ def run_check(
         config = request.apply(config)
     source_root = root.resolve()
     return _Run(config, source_root, ops or FlagsmithOps(config), model or LLMAdapter(config.agent),
-                 apps or LocalApp(config, source_root), console or Console(), input_fn, approver, request).run()
+                 apps or LocalApp(config, source_root), console or Console(), input_fn, approver, request, observer).run()

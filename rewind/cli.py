@@ -25,6 +25,13 @@ def build_parser() -> argparse.ArgumentParser:
     demo_p = sub.add_parser("demo", help="Replay a captured run offline")
     demo_p.add_argument("--case", choices=["a", "b", "refusal"], default="a", help="Capture to replay (default: Case A)")
 
+    ui_p = sub.add_parser("ui", help="Open the local UI or export captured browser replays")
+    mode = ui_p.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--config", help="Path to rewind.config.yaml for a live run")
+    mode.add_argument("--replay", action="store_true", help="Replay the captures locally without credentials")
+    mode.add_argument("--export", type=Path, help="Write a static offline replay site to this folder")
+    ui_p.add_argument("--case", choices=["a", "b", "refusal"], help="Starting capture for --replay (default: Case A)")
+
     seed_p = sub.add_parser("seed", help="Seed Flagsmith baseline state")
     seed_p.add_argument("--case", choices=["a", "b", "refusal"], required=True)
     seed_p.add_argument("--environment", help="Configured rehearsal environment (the default)")
@@ -99,6 +106,30 @@ def main(argv: list[str] | None = None) -> int:
         except ReportError as exc:
             print(f"rewind demo: {exc}", file=sys.stderr)
             return 1
+    if args.command == "ui":
+        from rewind.config import ConfigError, load_config
+        from rewind.report.data import redact_text
+        from rewind.web import serve
+        from rewind.web.replay import export_replay
+
+        if args.case is not None and not args.replay:
+            parser.error("--case is only supported with --replay")
+        try:
+            if args.export is not None:
+                export_replay(REPO_ROOT, args.export)
+                print(f"Browser replay: {args.export / 'index.html'}")
+            else:
+                config = None
+                if args.config is not None:
+                    from dotenv import load_dotenv
+
+                    load_dotenv(Path.cwd() / ".env", override=False)
+                    config = load_config(args.config)
+                serve(Path.cwd(), REPO_ROOT, config=config, case=args.case or "a")
+        except (ConfigError, OSError, ValueError) as exc:
+            print(redact_text(f"rewind ui: {exc}"), file=sys.stderr)
+            return 1
+        return 0
     parser.error("Unknown command")
 
 

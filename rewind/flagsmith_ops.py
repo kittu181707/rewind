@@ -174,6 +174,19 @@ class FlagsmithOps:
         data, _ = self._run_cli(["feature", "list", "--json"])
         return data if isinstance(data, list) else data.get("results", data.get("features", []))
 
+    def list_flag_states(self, environment: str, *, feature: str | None = None,
+                         identities: bool = False) -> list[dict[str, Any]]:
+        """Read the inventory, including overrides outside the write allowlist."""
+        args = ["flag", "list", "--environment", self._resolve_env_key(environment), "--json", "--no-input"]
+        if feature is not None:
+            args.extend(["--feature", feature])
+        if identities:
+            args.append("--identities")
+        data, _ = self._run_cli(args)
+        if not isinstance(data, list) or any(not isinstance(row, dict) for row in data):
+            raise FlagsmithOpsError("Unexpected Flagsmith flag inventory format")
+        return data
+
     def get_flag(self, environment: str, flag: str, segment: str | None = None) -> dict[str, Any]:
         if flag not in self.config.allowed.flags:
             raise FlagsmithOpsError(f"Flag {flag!r} is not in allowed.flags")

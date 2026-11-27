@@ -14,6 +14,7 @@ from rewind.report.terminal import RunConsole, attempt_display, captured_screen,
 
 
 REPLAY_SECONDS = 9.0
+CAPTURE_NAMES = {"a": "case-a", "b": "case-b", "refusal": "refusal"}
 
 
 def _events(data: dict, width: int) -> list[str]:
@@ -42,7 +43,7 @@ def replay(
     case: str, repository: Path, output_root: Path, *,
     console: Console | None = None, sleep: Callable[[float], None] | None = None,
 ) -> Path:
-    capture_name = {"a": "case-a", "b": "case-b", "refusal": "refusal"}[case]
+    capture_name = CAPTURE_NAMES[case]
     source = repository / "docs" / "captured-runs" / capture_name / "run.json"
     if not source.is_file():
         raise ReportError("Captured run is missing; use the repository checkout with docs/captured-runs")

@@ -13,8 +13,19 @@ from rewind.report.terminal import rehearsal_screen, target_screen
 
 ApprovalMode = Literal["human", "scripted"]
 HUMAN_APPROVER = "human (yes)"
+UI_APPROVER = "human (ui click)"
 SCRIPTED_APPROVER = "scripted (validation harness)"
 _TERMINAL_INPUT = input
+
+
+@dataclass(frozen=True)
+class BrowserApproval:
+    """An input adapter for the local UI's exact-gate click controller."""
+
+    wait: Callable[[str], str]
+
+    def __call__(self, prompt: str) -> str:
+        return self.wait(prompt)
 
 
 class ApprovalError(RuntimeError):
@@ -153,16 +164,17 @@ def _register_token(token: ApprovalToken) -> ApprovalToken:
 def approval_identity(
     input_fn: Callable[[str], str], approver: str | None, *, auto_approve: bool = False,
 ) -> tuple[ApprovalMode, str]:
-    """A callback or test auto-approval can never claim interactive approval."""
-    mode: ApprovalMode = "human" if input_fn is _TERMINAL_INPUT and not auto_approve else "scripted"
-    label = HUMAN_APPROVER if mode == "human" else SCRIPTED_APPROVER
+    """Only terminal input and the browser click adapter represent interactive approval."""
+    browser = isinstance(input_fn, BrowserApproval)
+    mode: ApprovalMode = "human" if not auto_approve and (input_fn is _TERMINAL_INPUT or browser) else "scripted"
+    label = (UI_APPROVER if browser else HUMAN_APPROVER) if mode == "human" else SCRIPTED_APPROVER
     if approver is not None and approver != label:
         raise ApprovalError("Approver label does not match the approval input mode")
     return mode, "auto-approved (test)" if auto_approve and approver is None else label
 
 
 def _confirm(prompt: str, gate: str, mode: ApprovalMode, input_fn: Callable[[str], str]) -> None:
-    if mode == "human" and not sys.stdin.isatty():
+    if mode == "human" and input_fn is _TERMINAL_INPUT and not sys.stdin.isatty():
         raise ApprovalError(f"{gate} requires an interactive terminal")
     if input_fn(prompt).strip() != "yes":
         raise ApprovalError(f"{gate} approval denied")

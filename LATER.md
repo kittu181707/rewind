@@ -1,6 +1,6 @@
 # Later / Out of Scope
 
-Rewind already has prompt-based `rewind do`, the approval-gated terminal flow, static reports, and offline terminal replay of all three captures. The local web UI and browser replay are part of the final build; the items below are deferred.
+Rewind has prompt-based `rewind do`, terminal and local browser approvals for live runs, static reports, and offline terminal and browser replay of all three captures. The items below are deferred.
 
 - Flagsmith Experimentation launch integration (stretch goal only)
 - Flagsmith Change Requests workflow (requires paid plan; direct writes return HTTP 409)

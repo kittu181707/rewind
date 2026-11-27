@@ -50,6 +50,10 @@ def redact_text(value: str) -> str:
     return " ".join("".join(char for char in redacted if char.isprintable() or char.isspace()).split())
 
 
+def redact_event(data: dict) -> dict:
+    return _sanitize(data, _environment_secrets())
+
+
 def utc_time(value: str | None) -> str | None:
     if not value:
         return None

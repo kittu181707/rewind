@@ -11,33 +11,59 @@
   <title>Rewind · Off is not undo</title>
 </head>
 <body data-mode="replay" data-case="a">
-  <main>
-    <header>
-      <p class="brand">Rewind</p>
-      <h1>Off is not undo.</h1>
-      <p id="mode"></p>
-    </header>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand-group">
+        <h1 class="brand-name">Rewind</h1>
+        <p class="brand-tagline">Off is not undo.</p>
+      </div>
+      <div class="topbar-meta" aria-label="Run status">
+        <span id="env-badge" class="pill pill-env-rehearsal mono">rehearsal</span>
+        <span id="counter-alone" class="pill mono">0 done alone</span>
+        <span id="counter-approvals" class="pill mono">0 approvals asked</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="shell">
+    <p id="mode" class="mode-bar"></p>
+
     <div class="layout">
+      <aside id="inventory" class="sidebar card" aria-labelledby="inventory-title" hidden>
+        <h2 id="inventory-title">Flagsmith inventory</h2>
+        <div id="flags" class="inventory-list" aria-live="polite">Reading configured environments…</div>
+      </aside>
+
       <section class="workspace" aria-label="Rewind conversation">
         <form id="request-form" class="card" hidden>
           <label for="request">What would you like to roll back?</label>
-          <input id="request" required maxlength="2000" placeholder="Roll back the new feature">
-          <button id="run" type="submit" disabled>Start rehearsal</button>
+          <div class="form-row">
+            <input id="request" required maxlength="2000" placeholder="Roll back the new checkout feature">
+            <button id="run" type="submit" class="btn-primary" disabled>Start rehearsal</button>
+          </div>
         </form>
+
         <form id="replay-form" class="card" hidden>
           <label for="case">Choose a captured run</label>
-          <select id="case"><option value="a">Case A · Saved data breaks</option><option value="b">Case B · Targeting override</option><option value="refusal">Refusal · No verified fix</option></select>
-          <button id="play" type="submit">Start replay</button>
+          <div class="form-row">
+            <select id="case">
+              <option value="a">Case A · Saved data breaks</option>
+              <option value="b">Case B · Targeting override</option>
+              <option value="refusal">Refusal · No verified fix</option>
+            </select>
+            <button id="play" type="submit" class="btn-primary">Start replay</button>
+          </div>
         </form>
-        <div id="controls" class="card controls" hidden><p id="progress" role="status"></p><button id="stop" type="button">Stop</button></div>
-        <p id="notice" role="status"></p>
-        <div id="chat" aria-label="Run events"></div>
+
+        <div id="controls" class="card controls" hidden>
+          <p id="progress" role="status"></p>
+          <button id="stop" type="button">Stop</button>
+        </div>
+
+        <p id="notice" class="muted" role="status"></p>
+        <div id="chat" class="thread" aria-label="Run events"></div>
         <noscript>JavaScript is required to display run events and record decisions.</noscript>
       </section>
-      <aside id="inventory" class="card" aria-labelledby="inventory-title" hidden>
-        <h2 id="inventory-title">Flagsmith flags</h2>
-        <div id="flags" aria-live="polite">Reading the configured environments…</div>
-      </aside>
     </div>
   </main>
 </body>

@@ -7,6 +7,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+import pytest
+
 from rewind import cli
 
 
@@ -48,7 +50,8 @@ def test_cli_seed_rejects_target_environment(monkeypatch, capsys) -> None:
     assert "cannot mutate target" in err.lower()
 
 
-def test_cli_check_delegates_and_writes_reports(tmp_path, monkeypatch, capsys) -> None:
+@pytest.mark.parametrize("status, exit_code", [("verified", 0), ("refused", 1)])
+def test_cli_check_delegates_and_writes_reports(tmp_path, monkeypatch, capsys, status, exit_code) -> None:
     from rewind.orchestrator import CheckResult
 
     monkeypatch.chdir(tmp_path)
@@ -60,12 +63,17 @@ def test_cli_check_delegates_and_writes_reports(tmp_path, monkeypatch, capsys) -
         assert isinstance(console, RunConsole)
         calls.append((config.config_path, root))
         recorded = root / "run.json"
-        recorded.write_text('{"status":"verified","approval_mode":"scripted"}')
-        return CheckResult("verified", recorded)
+        recorded.write_text(json.dumps({"status": status, "approval_mode": "scripted", "attempts": [{
+            "number": 1, "status": "failed" if status == "refused" else "verified", "reason": "The verifier rejected the change",
+            "proposal": {"diagnosis": "Change a flag setting", "flag": "feature", "scope": "environment_default", "operation": "set_on"},
+        }]}))
+        return CheckResult(status, recorded)
 
     monkeypatch.setattr("rewind.orchestrator.run_check", fake_check)
     config = REPO_ROOT / "examples/demo-shop/rewind.config.yaml"
-    assert cli.main(["check", "--config", str(config)]) == 0
+    assert cli.main(["check", "--config", str(config)]) == exit_code
     assert calls == [(config, tmp_path)]
     assert (tmp_path / "report.html").is_file() and (tmp_path / "report.json").is_file()
-    assert "Report:" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "Report:" in output
+    assert ("Rejected suggestion: Change a flag setting" in output) == (status == "refused")

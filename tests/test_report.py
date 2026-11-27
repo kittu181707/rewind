@@ -57,6 +57,8 @@ def test_captured_reports_keep_every_transition_user_and_change(tmp_path, case, 
         assert "Unrecognized cart schema" in html
         assert "set override ON for segment vip_users" in html
         assert "No verified fix found: 3 proposals rejected by the verifier. Target unchanged." in summary
+        assert "Rejected suggestion:" in summary and "What Rewind found" not in html
+        assert html.count("Rejected suggestion:") == 4
     if case == "case-b":
         assert "delete override for segment vip_users" in html
         assert "alice and carol still ran the new checkout" in summary
@@ -91,6 +93,7 @@ def test_rejected_proposal_is_recovered_from_audit_and_escaped(tmp_path, monkeyp
     output, data = write_report(source)
     html = output.read_text()
     assert "REJECTED" in html and "Scope not allowed" in html and "set override OFF for identity user" in html
+    assert "Rejected suggestion:" in html and "What Rewind found" not in html
     assert "&lt;script&gt;FIX&lt;/script&gt;" in html and "<script>FIX</script>" not in html
     assert data["attempts"][0]["proposal"]["diagnosis"].endswith("<REDACTED> <REDACTED>")
     assert all(value not in html and value not in output.with_suffix(".json").read_text() for value in (secret, url))

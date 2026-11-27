@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 
 VERDICTS = {"verified": "Verified", "refused": "Refused", "stopped": "Stopped", "approval_denied": "Denied"}
+REJECTED_SUGGESTION = "Rejected suggestion"
 _AUTH_OR_KEY = re.compile(
     r"https?://[^\s\"'<>]*(?:oauth|authorize|login|auth/|[?&](?:token|key|code)=)[^\s\"'<>]*|"
     r"\b(?:Bearer|Basic)\s+[^\s,;]+|\b(?:sk-|gsk_|AIza|ghp_|github_pat_|ser\.|AQ\.)[A-Za-z0-9_.-]{8,}", re.IGNORECASE,
@@ -79,6 +80,17 @@ def _proposal(attempt: dict) -> dict | None:
     return None
 
 
+def _attempt(attempt: dict) -> dict:
+    proposal = _proposal(attempt)
+    label = "Diagnosis"
+    if proposal and attempt.get("status") in {"failed", "invalid"}:
+        label = REJECTED_SUGGESTION
+    elif attempt.get("status") == "no_fix":
+        label = "Why Rewind stopped"
+    return {**_fields(attempt, "number", "status", "reason"), "proposal": proposal, "suggestion_label": label,
+            "verification": _fields(attempt.get("verification") or {}, "ok", "summary")}
+
+
 def _observation(step: dict, allowed: frozenset[str]) -> dict:
     return {**_fields(step, "name", "step", "user", "http_status", "executed_version"),
             "effective_flags": {flag: value for flag, value in (step.get("effective_flags") or {}).items() if flag in allowed}}
@@ -119,7 +131,7 @@ def _people(names: list[str]) -> str:
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
 
-def summary_lines(data: dict) -> tuple[str, str, str, str]:
+def _summary(data: dict) -> tuple[tuple[str, str], ...]:
     failure = rollback_failure(data["transitions"])
     observed = "No failed rollback was recorded."
     if failure:
@@ -138,10 +150,15 @@ def summary_lines(data: dict) -> tuple[str, str, str, str]:
             observations.append(f"{_people(new_checkout)} still ran the new checkout")
         observed = "; ".join(observations) + "." if observations else "The recorded journey did not pass."
     attempts = data["attempts"]
-    found = next((attempt["proposal"]["diagnosis"] for attempt in reversed(attempts)
-                  if (attempt.get("proposal") or {}).get("diagnosis")), None)
-    if found is None:
-        found = next((attempt.get("reason") for attempt in reversed(attempts) if attempt.get("status") == "no_fix"), None)
+    label, found = "Diagnosis", "No diagnosis recorded."
+    for attempt in reversed(attempts):
+        diagnosis = (attempt.get("proposal") or {}).get("diagnosis")
+        if attempt.get("status") == "no_fix":
+            diagnosis = attempt.get("reason")
+        if diagnosis:
+            label = "What Rewind found" if attempt.get("status") == "verified" else attempt["suggestion_label"]
+            found = diagnosis
+            break
 
     changed = "No target flag change was applied."
     if data["status"] == "refused":
@@ -171,7 +188,8 @@ def summary_lines(data: dict) -> tuple[str, str, str, str]:
         else:
             detail = f"{decision or 'approved'} · {detail}"
         approvals.append(f"Gate {gate['gate']}: {detail}")
-    return observed, found or "No diagnosis recorded.", changed, "; ".join(approvals) + "."
+    return (("After the rollback", observed), (label, found), ("What changed", changed),
+            ("Who approved", "; ".join(approvals) + "."))
 
 
 def public_report(run: dict, *, captured: bool = False, allowed_flags: Iterable[str] | None = None) -> dict:
@@ -196,9 +214,7 @@ def public_report(run: dict, *, captured: bool = False, allowed_flags: Iterable[
             "failed_assertions": [_fields(item, "user", "step", "assertion", "detail")
                                   for item in event.get("failed_assertions", [])],
         } for event in run.get("transitions", [])],
-        "attempts": [{**_fields(attempt, "number", "status", "reason"), "proposal": _proposal(attempt),
-                      "verification": _fields(attempt.get("verification") or {}, "ok", "summary")}
-                     for attempt in run.get("attempts", [])],
+        "attempts": [_attempt(attempt) for attempt in run.get("attempts", [])],
         "approvals": [
             _approval(approval_log[gate])
             if gate in approval_log else {"gate": gate, "status": "not reached"} for gate in (1, 2)
@@ -211,5 +227,7 @@ def public_report(run: dict, *, captured: bool = False, allowed_flags: Iterable[
                    "Rewind tests configuration-only recovery; it does not undo a database migration or rewrite app code.",
                    "Unreached approvals, missing snapshots, and failed checks do not establish target safety."],
     }, secrets)
-    data["summary_lines"] = list(summary_lines(data))
+    summary = _summary(data)
+    data["summary_labels"] = [label for label, _ in summary]
+    data["summary_lines"] = [line for _, line in summary]
     return data

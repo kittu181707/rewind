@@ -21,6 +21,19 @@ _STAGE = re.compile(r"^\s*\d+\. (baseline setup|rollback|recovery):")
 _WORDS = {"set_on": "Switch on", "set_off": "Switch off", "delete_override": "Remove override"}
 
 
+def attempt_display(attempt: dict) -> str:
+    proposal = attempt.get("proposal") or {}
+    reason = attempt.get("reason")
+    diagnosis = proposal.get("diagnosis") or reason or "Not recorded"
+    result = f"Attempt {attempt['number']} · {attempt['suggestion_label']}: {diagnosis}"
+    if proposal:
+        operation = describe_write(*(str(proposal.get(field, "—")) for field in ("flag", "scope", "operation")))
+        result += f"\nProposed change: {operation}"
+    if reason and reason != diagnosis:
+        result += f"\nResult: {reason}"
+    return result
+
+
 def _change_line(change: dict) -> str:
     if change.get("kind") == "flag" and all(key in change for key in ("flag", "scope", "operation")):
         action = describe_write(change["flag"], change["scope"], change["operation"])

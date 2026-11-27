@@ -10,24 +10,10 @@ from typing import Callable
 from rich.console import Console
 
 from rewind.report import ReportError, write_report
-from rewind.report.data import describe_write
-from rewind.report.terminal import RunConsole, captured_screen, plain_output
+from rewind.report.terminal import RunConsole, attempt_display, captured_screen, plain_output
 
 
 REPLAY_SECONDS = 9.0
-
-
-def _diagnosis(attempt: dict) -> str:
-    proposal = attempt.get("proposal") or {}
-    reason = attempt.get("reason")
-    diagnosis = proposal.get("diagnosis") or reason or "Not recorded"
-    result = f"Attempt {attempt['number']} · Diagnosis: {diagnosis}"
-    if proposal:
-        operation = describe_write(*(str(proposal.get(field, "—")) for field in ("flag", "scope", "operation")))
-        result += f"\nProposed change: {operation}"
-    if reason and reason != diagnosis:
-        result += f"\nResult: {reason}"
-    return result
 
 
 def _events(data: dict, width: int) -> list[str]:
@@ -44,8 +30,8 @@ def _events(data: dict, width: int) -> list[str]:
             if transition["label"].endswith("verify before recovery"):
                 attempt = next(attempts, None)
                 if attempt is not None:
-                    events.append(_diagnosis(attempt))
-    events.extend(_diagnosis(attempt) for attempt in attempts)
+                    events.append(attempt_display(attempt))
+    events.extend(attempt_display(attempt) for attempt in attempts)
     events.append(captured_screen(data["approvals"][1], data["target"]["before"], width=width))
     events.extend(target_events)
     return events
@@ -55,7 +41,7 @@ def replay(
     case: str, repository: Path, output_root: Path, *,
     console: Console | None = None, sleep: Callable[[float], None] | None = None,
 ) -> Path:
-    capture_name = {"a": "case-a", "refusal": "refusal"}[case]
+    capture_name = {"a": "case-a", "b": "case-b", "refusal": "refusal"}[case]
     source = repository / "docs" / "captured-runs" / capture_name / "run.json"
     if not source.is_file():
         raise ReportError("Captured run is missing; use the repository checkout with docs/captured-runs")

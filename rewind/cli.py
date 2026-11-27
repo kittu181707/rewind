@@ -19,7 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
     check_p.add_argument("--config", required=True, help="Path to rewind.config.yaml")
 
     demo_p = sub.add_parser("demo", help="Replay a captured run offline")
-    demo_p.add_argument("--case", choices=["a", "refusal"], default="a", help="Capture to replay (default: Case A)")
+    demo_p.add_argument("--case", choices=["a", "b", "refusal"], default="a", help="Capture to replay (default: Case A)")
 
     seed_p = sub.add_parser("seed", help="Seed Flagsmith baseline state")
     seed_p.add_argument("--case", choices=["a", "b", "refusal"], required=True)
@@ -38,14 +38,20 @@ def main(argv: list[str] | None = None) -> int:
         from rewind.config import ConfigError, load_config
         from rewind.orchestrator import RunError, run_check
         from rewind.report import ReportError, write_report
-        from rewind.report.terminal import RunConsole, plain_output
+        from rewind.report.data import REJECTED_SUGGESTION
+        from rewind.report.terminal import RunConsole, attempt_display, plain_output
 
         root = Path.cwd()
         try:
             load_dotenv(root / ".env", override=False)
             config = load_config(args.config)
-            result = run_check(config, root, console=RunConsole())
-            report, _ = write_report(result.evidence, allowed_flags=config.allowed.flags)
+            console = RunConsole()
+            result = run_check(config, root, console=console)
+            report, data = write_report(result.evidence, allowed_flags=config.allowed.flags)
+            if data["status"] == "refused":
+                for attempt in data["attempts"]:
+                    if attempt["suggestion_label"] == REJECTED_SUGGESTION:
+                        console.print(attempt_display(attempt), markup=False, highlight=False)
             print(f"Report: {report}")
             return result.exit_code
         except (ConfigError, RunError, ReportError) as exc:

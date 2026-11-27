@@ -112,7 +112,8 @@ def _attempt_cards(attempts: list[dict]) -> str:
         diagnosis = proposal.get("diagnosis") or (reason if attempt.get("status") == "no_fix" else None)
         result = attempt["verification"].get("summary")
         cards.append(f'<article class="attempt"><h3>Attempt {_text(attempt["number"])} · {_text(title)}</h3>'
-                     f"<p><strong>Diagnosis:</strong> {_text(diagnosis)}</p><p><strong>Proposed change:</strong> {_text(proposed)}</p>"
+                     f"<p><strong>{_text(attempt['suggestion_label'])}:</strong> {_text(diagnosis)}</p>"
+                     f"<p><strong>Proposed change:</strong> {_text(proposed)}</p>"
                      f"<p><strong>Result:</strong> {_text(reason)}</p>"
                      + (f"<p><strong>Verifier:</strong> {_text(result)}</p>" if result and result != reason else "") + "</article>")
     return "".join(cards) or '<p class="muted">The agent did not submit an attempt.</p>'
@@ -195,7 +196,7 @@ def render_html(data: dict) -> str:
     eyebrow = f"REWIND / {data['source']}" + (f" / {capture_label}" if capture_label else "")
     status_class = "verified" if data["status"] == "verified" else ""
     summary = "".join(f"<p><strong>{_text(label)}:</strong> {_text(line)}</p>" for label, line in zip(
-        ("After the rollback", "What Rewind found", "What changed", "Who approved"), data["summary_lines"]))
+        data["summary_labels"], data["summary_lines"]))
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">

@@ -22,6 +22,13 @@ pip install -e . && rewind demo
 
 You can also use `python -m rewind demo` from the activated environment.
 
+## Why this exists
+
+- [Flagsmith’s rollback strategy](https://www.flagsmith.com/blog/rollback-strategy): “Rehearse the rollback in staging.”
+- [Flagsmith’s automatic rollback guide](https://www.flagsmith.com/blog/automatic-rollback): “A rollback that touches a database or reopens a fixed bug needs a person”.
+
+Rewind automates that staging rehearsal and keeps a person in charge of every change. It also checks for a failure those guides don't cover: a targeting override that keeps users on the new experience after the default is switched off.
+
 ## Live proof
 
 | Scenario | What happened | Sample report | Captured evidence |
@@ -31,6 +38,10 @@ You can also use `python -m rewind demo` from the activated environment.
 | Refusal | No tested setting restored the old checkout. The verifier rejected three proposals and Rewind left the target unchanged. | [Open HTML](docs/sample-report-refusal.html) | [run.json](docs/captured-runs/refusal/run.json) |
 
 Download the HTML to open it locally. The captures use real model and Flagsmith calls with **scripted approvals**. See the [validation tables and verbatim diagnoses](DAY3_NOTES.md), or replay Case B with `rewind demo --case b` and Refusal with `rewind demo --case refusal`.
+
+**Case A in the shop:** After a plain rollback, Alice (VIP) sees an HTTP 500 because legacy checkout cannot read her saved v2 cart.
+
+![Demo shop: Alice's VIP cart is saved in schema v2; the legacy checkout returns HTTP 500 with both flags off.](docs/screens/shop-vip-plain-rollback.png)
 
 **Interactive approval:** The typed `yes` path is covered by tests. Separate human run: _evidence link pending_.
 
@@ -66,6 +77,10 @@ See [the autonomy guide](docs/autonomy.md).
 
 [How Rewind uses Flagsmith](docs/how-rewind-uses-flagsmith.md) explains what would break without each feature and lists the exact redacted commands from the captures.
 
+Rewind uses the Flagsmith CLI rather than the MCP server because every write is an allowlisted argument list run without a shell.
+
+Rewind is not a wrapper around an MCP server; it adds an isolated rehearsal, a fixed verifier the model cannot edit, drift checks, and an exact approval plan.
+
 ## Run it for real
 
 You need **Python 3.12+** and the repository checkout. For a live check, also install **Flagsmith CLI v2**, use a Groq API key, and prepare two **dedicated non-production** Flagsmith environments. The demo config expects `rehearsal` and `demo-target`, the Boolean flags `checkout_v2` and `cart_compat_reader`, and the `vip_users` segment with `is_vip` equal to `true`. It starts the shop on loopback ports **8001** and **8002**. Seed sets flag baselines; it does not provision the Flagsmith project.
@@ -92,10 +107,10 @@ Put your live credentials in the ignored `.env` using `.env.example` as a guide,
 
 ```bash
 rewind seed --case a
-rewind check --config examples/demo-shop/rewind.config.yaml
+rewind do "roll back checkout_v2" --config examples/demo-shop/rewind.config.yaml
 ```
 
-Seed resets the dedicated rehearsal flag settings only. `check` shows a rehearsal approval, the failing checkout, and the proposed repair. If rehearsal passes, Gate 2 lists the ordered staging writes and fixture changes. Read each plan before typing `yes`. If the target changed or the failure does not reproduce there, Rewind stops instead of applying the repair. It writes `run.json`, `report.html`, and `report.json` under `.artifacts/`.
+Seed resets the dedicated rehearsal flag settings only. `do` interprets the request and shows it at the first approval; `rewind check --config …` starts from the rollback already in the config. Rewind shows the failing checkout and the proposed repair. If the fix passes in rehearsal, Gate 2 lists the ordered staging writes and fixture changes. Read each plan before typing `yes`. If the target changed or the failure does not reproduce there, Rewind stops instead of applying the repair. It writes `run.json`, `report.html`, and `report.json` under `.artifacts/`.
 
 ## Connect your own app
 

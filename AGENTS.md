@@ -42,7 +42,7 @@ Turning a feature flag off is supposed to be the safe move. But if the new versi
 6. **Stop on failure:** if a command fails or something is unclear, stop and show the exact command and error. Do not invent results, numbers or screenshots.
 7. **Honesty:** labels like "captured run", "measured once", "written by a separate AI session" must be accurate. Never claim a guarantee for every production customer. Success means the tested journey is verified on an allowlisted staging target.
 8. **No automatic revert.** If target verification fails, stop, preserve the evidence, list exactly what changed, and request approval for a recovery action.
-9. **Prior work:** a throwaway spike proved the idea before the event (in `~/rewind-spike`). You may read its report for exact CLI command forms. Do not copy app code wholesale. If anything is reused, the README says so in one line under "Prior work".
+9. **Prior work:** a throwaway spike outside this repository proved the idea before the event. Do not copy app code wholesale. If anything is reused, the README says so in one line under "Prior work".
 10. **Report format after each task:** short PASS/FAIL list with evidence (command and output excerpt), what is unfinished, and any assumption you made.
 
 ## 4. Current state (what is already proven)
@@ -281,7 +281,7 @@ Python 3.12; FastAPI, uvicorn, PyYAML, rich, pytest, Flagsmith SDK (remote evalu
 5. "Connect an existing test app": the app needs Flagsmith integrated, a journey command, resettable test data, an isolated runnable instance. The connection is three commands plus the config. Only call it "in 5 minutes" if measured.
 6. Honest limits: configuration changes only, needs a journey, cannot undo a database migration, Change Requests environments not supported, success means the tested journey on a staging target.
 7. README lists every environment variable, one real run command, and what should happen when it works. No keys in the repo.
-8. Demo video, 2-3 minutes: about 15 seconds of the problem; most of the time on the working demo with **both approvals shown on screen**; a clear look at the Flagsmith side. A long first-screen README is a failure; MAELIN (a previous submission) lost points for jargon, unclear value and no way to connect.
+8. Demo video, 2-3 minutes: about 15 seconds of the problem; most of the time on the working demo with **both approvals shown on screen**; a clear look at the Flagsmith side. Keep the opening short, use plain words, and show how to connect an app.
 
 ## 14. Out of scope
 

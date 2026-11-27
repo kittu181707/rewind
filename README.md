@@ -4,7 +4,9 @@
 
 > Rewind checks whether turning a feature off really restores the old experience without breaking saved user data. With your approval, it rehearses the transition on an isolated test copy of your app using real Flagsmith configuration. If it fails, the agent investigates the evidence and tests up to three configuration-only recovery plans. A separate approval is required before a verified plan is applied to the target environment.
 
-*(Skeleton README — full walkthrough, live proof, and sample report coming on Day 3.)*
+**Try the captured run:** `rewind demo` (Case A) or `rewind demo --case refusal`. From the repository checkout, both replays take about ten seconds and generate a report without accounts or network calls.
+
+Sample reports: [Case A](docs/sample-report-case-a.html) · [Refusal](docs/sample-report-refusal.html) · [Case B](docs/sample-report-case-b.html). Live `rewind check` writes `report.html` and `report.json` next to `run.json`.
 
 ## Flagsmith Authentication
 
@@ -21,7 +23,7 @@ When connecting another test app, supply your own **trusted journey command**. R
 
 The approval registry is in-process, not cryptographic protection or a sandbox for Python code. Rewind's model tools cannot invoke the approval functions or execute Flagsmith operations; trusted runner code owns both gates and any writes.
 
-The demo uses Groq `openai/gpt-oss-120b` only. Gemini `gemini-3.6-flash` fallback is disabled and unsupported for this demo: none of the three synthetic tool exchanges completed (one initial timeout and two initial HTTP 503 responses). Those results do not establish whether Gemini accepts the tool schema.
+Live checks use Groq `openai/gpt-oss-120b` only. Gemini `gemini-3.6-flash` fallback is disabled and unsupported for this demo: none of the three synthetic tool exchanges completed (one initial timeout and two initial HTTP 503 responses). Those results do not establish whether Gemini accepts the tool schema.
 
 ## Fixes after the agent freeze
 

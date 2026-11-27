@@ -18,7 +18,8 @@ def build_parser() -> argparse.ArgumentParser:
     check_p = sub.add_parser("check", help="Rehearse and verify a rollback plan")
     check_p.add_argument("--config", required=True, help="Path to rewind.config.yaml")
 
-    sub.add_parser("demo", help="Replay a captured run")
+    demo_p = sub.add_parser("demo", help="Replay a captured run offline")
+    demo_p.add_argument("--case", choices=["a", "refusal"], default="a", help="Capture to replay (default: Case A)")
 
     seed_p = sub.add_parser("seed", help="Seed Flagsmith baseline state")
     seed_p.add_argument("--case", choices=["a", "b", "refusal"], required=True)
@@ -67,8 +68,17 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(json.dumps(result, indent=2))
         return 0
-    print(f"rewind {args.command}: not implemented yet")
-    return 0
+    if args.command == "demo":
+        from rewind.demo import replay
+        from rewind.report import ReportError
+
+        try:
+            replay(args.case, REPO_ROOT, Path.cwd())
+            return 0
+        except ReportError as exc:
+            print(f"rewind demo: {exc}", file=sys.stderr)
+            return 1
+    parser.error("Unknown command")
 
 
 if __name__ == "__main__":

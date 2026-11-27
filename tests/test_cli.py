@@ -48,7 +48,7 @@ def test_cli_seed_rejects_target_environment(monkeypatch, capsys) -> None:
     assert "cannot mutate target" in err.lower()
 
 
-def test_cli_check_delegates_and_demo_remains_a_placeholder(tmp_path, monkeypatch, capsys) -> None:
+def test_cli_check_delegates_and_writes_reports(tmp_path, monkeypatch, capsys) -> None:
     from rewind.orchestrator import CheckResult
 
     monkeypatch.chdir(tmp_path)
@@ -66,5 +66,3 @@ def test_cli_check_delegates_and_demo_remains_a_placeholder(tmp_path, monkeypatc
     assert calls == [(config, tmp_path)]
     assert (tmp_path / "report.html").is_file() and (tmp_path / "report.json").is_file()
     assert "Report:" in capsys.readouterr().out
-    assert cli.main(["demo"]) == 0
-    assert "not implemented yet" in capsys.readouterr().out

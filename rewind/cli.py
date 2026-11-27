@@ -42,8 +42,9 @@ def main(argv: list[str] | None = None) -> int:
         root = Path.cwd()
         try:
             load_dotenv(root / ".env", override=False)
-            result = run_check(load_config(args.config), root)
-            report, _ = write_report(result.evidence)
+            config = load_config(args.config)
+            result = run_check(config, root)
+            report, _ = write_report(result.evidence, allowed_flags=config.allowed.flags)
             print(f"Report: {report}")
             return result.exit_code
         except (ConfigError, RunError, ReportError) as exc:

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from html import escape
 import json
 from pathlib import Path
 
-from rewind.report.data import VERDICTS, describe_write, public_report
+from rewind.report.data import VERDICTS, describe_write, public_report, rollback_failure
 
 
 class ReportError(ValueError):
@@ -30,12 +31,14 @@ h3 { margin:.8rem 0 .3rem; font-size:1rem; }
 p { margin:.35rem 0 .65rem; }
 .verdict { font-size:1.15rem; font-weight:750; color:var(--alert); }
 .verdict.verified { color:var(--pass); }
+.summary-card { border-left:4px solid var(--accent); }
+.summary-card p { margin:.25rem 0 .5rem; }
 .facts, .pair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.65rem 1rem; }
 dl { margin:.6rem 0 0; }
 dt, th, .muted { color:var(--muted); }
 dt { font-size:.73rem; letter-spacing:.07em; text-transform:uppercase; font-weight:700; }
 dd { margin:.1rem 0 0; font-weight:600; }
-.scroll { overflow-x:auto; }
+.scroll { max-width:100%; overflow-x:auto; }
 table { width:100%; border-collapse:collapse; text-align:left; font-size:.87rem; }
 th,td { border-bottom:1px solid var(--line); padding:.45rem .5rem; vertical-align:top; }
 th { font-size:.78rem; }
@@ -45,7 +48,17 @@ pre { white-space:pre-wrap; overflow-wrap:anywhere; background:var(--bg); paddin
 .attempt,.gate { border-top:1px solid var(--line); padding:.55rem 0 .35rem; }
 details { margin:.55rem 0; }
 summary { cursor:pointer; font-weight:650; }
-@media (max-width:40rem) { .scroll table { min-width:33rem; } .pair { grid-template-columns:1fr; } }
+@media (max-width:40rem) {
+  main { padding:.65rem; }
+  header, section, footer { padding:.8rem; margin-bottom:.85rem; }
+  .summary-card p { font-size:.875rem; line-height:1.4; margin:.15rem 0 .4rem; }
+  .eyebrow { font-size:.65rem; }
+  .verdict { font-size:1rem; }
+  .facts { gap:.35rem .65rem; font-size:.83rem; line-height:1.35; }
+  dt { font-size:.66rem; }
+  .scroll table { min-width:33rem; }
+  .pair { grid-template-columns:minmax(0,1fr); }
+}
 """
 
 
@@ -53,16 +66,13 @@ def _text(value) -> str:
     return escape("—" if value is None else str(value))
 
 
-def _table(headers: tuple[str, ...], rows: list[tuple], *, empty: str) -> str:
+def _table(headers: tuple[str, ...], rows: list[tuple], *, label: str, empty: str = "No entries recorded.") -> str:
     if not rows:
         return f'<p class="muted">{_text(empty)}</p>'
     head = "".join(f'<th scope="col">{_text(value)}</th>' for value in headers)
     body = "".join("<tr>" + "".join(f"<td>{_text(value)}</td>" for value in row) + "</tr>" for row in rows)
-    return f'<div class="scroll" tabindex="0"><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'
-
-
-def _json_block(value) -> str:
-    return f"<pre>{_text(json.dumps(value, indent=2, ensure_ascii=False))}</pre>"
+    return (f'<div class="scroll" role="region" aria-label="{_text(label)}" tabindex="0">'
+            f'<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>')
 
 
 def _flag_states(flags: dict) -> str | None:
@@ -72,24 +82,22 @@ def _flag_states(flags: dict) -> str | None:
 
 def _timeline(events: list[dict]) -> str:
     pieces = []
+    failing = rollback_failure(events)
     for event in events:
+        label = event["label"]
         rows = [(step.get("user"), step.get("name", "").replace("_", " "), step.get("executed_version"),
                  step.get("http_status"), _flag_states(step.get("effective_flags") or {})) for step in event["steps"]]
-        pieces.append(f"<h3>{_text(event['label'])}</h3><p class=\"muted\">{_text(event.get('environment'))} · "
-                      f"{_text(event.get('timestamp'))}</p><p>{_text(event.get('summary'))}</p>"
-                      + _table(("User", "Action", "Version run", "HTTP", "Effective flags"), rows, empty="No user observations recorded."))
-    return "".join(pieces) or '<p class="muted">No journey checks recorded.</p>'
-
-
-def _failures(events: list[dict]) -> str:
-    blocks = []
-    for event in events:
-        rows = [(item.get("user"), item.get("step"), item.get("assertion", "").replace("_", " "), item.get("detail"))
+        failures = [(item.get("user"), item.get("step"), item.get("assertion", "").replace("_", " "), item.get("detail"))
                 for item in event["failed_assertions"]]
-        if rows:
-            blocks.append(f"<details open><summary>{_text(event['label'])}</summary>"
-                          + _table(("User", "Action", "Failed check", "Why it failed"), rows, empty="") + "</details>")
-    return "".join(blocks) or '<p class="muted">No failed checks recorded.</p>'
+        opened = " open" if event is failing else ""
+        pieces.append(f'<details class="timeline-event"{opened}><summary>{_text(label)}</summary>'
+                      f"<p class=\"muted\">{_text(event.get('environment'))} · {_text(event.get('timestamp'))}</p>"
+                      f"<p>{_text(event.get('summary'))}</p>"
+                      + _table(("User", "Action", "Version run", "HTTP", "Effective flags"), rows,
+                               label=f"{label} user observations", empty="No user observations recorded.")
+                      + ("<h3>Failed checks</h3>" + _table(("User", "Action", "Failed check", "Why it failed"),
+                         failures, label=f"{label} failed checks") if failures else "") + "</details>")
+    return "".join(pieces) or '<p class="muted">No journey checks recorded.</p>'
 
 
 def _attempt_cards(attempts: list[dict]) -> str:
@@ -115,10 +123,12 @@ def _approval_cards(approvals: list[dict]) -> str:
     for gate in approvals:
         label = "Rehearsal permission" if gate["gate"] == 1 else "Target permission"
         decision = gate.get("status", "approved")
-        details = f"<pre>{_text(gate['summary'])}</pre>" if gate.get("summary") else ""
+        details = ""
         ops = "".join(f"<li>{_text(describe_write(*operation))}</li>" for operation in gate.get("operations", []))
         if ops:
             details += f"<p>Approved writes in order:</p><ol>{ops}</ol>"
+        if gate.get("summary"):
+            details += f"<details><summary>Recorded approval details</summary><pre>{_text(gate['summary'])}</pre></details>"
         cards.append(f'<article class="gate"><h3>Gate {_text(gate["gate"])} · {label}</h3>'
                      f"<p>{_text(decision)} · {_text(gate.get('approval_mode'))} · {_text(gate.get('approved_by'))}</p>"
                      f"<p>When: {_text(gate.get('issued_at', gate.get('timestamp')))} · Environment: {_text(gate.get('environment'))}</p>"
@@ -143,6 +153,29 @@ def _change_rows(changes: list[dict]) -> list[tuple]:
     return rows
 
 
+def _target_state(snapshot: dict | None, label: str, missing: str) -> str:
+    if not snapshot:
+        return f"<p>{_text(missing)}</p>"
+    if "user_outcomes" in snapshot:
+        rows = [(user, step.get("executed_version"), step.get("http_status"), _flag_states(step.get("effective_flags") or {}))
+                for user, step in snapshot["user_outcomes"].items()]
+        return f"<p>{_text(snapshot.get('observation'))}</p>" + _table(
+            ("User", "Version run", "HTTP", "Effective flags"), rows, label=label)
+    flags = snapshot.get("flags") or snapshot.get("state", {}).get("flags", {})
+    rows = []
+    for flag, value in flags.items():
+        names = []
+        for kind, overrides in (("segment", value.get("overrides", value.get("segment_overrides"))),
+                                ("identity", value.get("identity_overrides_detail", value.get("identity_overrides")))):
+            if isinstance(overrides, dict):
+                names.extend(f"{kind} {name}: {'ON' if entry.get('enabled') else 'OFF'}" for name, entry in overrides.items())
+            elif isinstance(overrides, list):
+                names.extend(f"{kind} {name}" for name in overrides)
+        rows.append((flag, "ON" if value.get("enabled") else "OFF", ", ".join(names) or "None"))
+    return f"<p>Snapshot: <code>{_text(snapshot.get('hash'))}</code></p>" + _table(
+        ("Flag", "Default", "Overrides"), rows, label=label)
+
+
 def render_html(data: dict) -> str:
     environments = data.get("environments", {})
     elapsed = data.get("elapsed_seconds")
@@ -161,27 +194,31 @@ def render_html(data: dict) -> str:
     capture_label = data["capture"].get("label")
     eyebrow = f"REWIND / {data['source']}" + (f" / {capture_label}" if capture_label else "")
     status_class = "verified" if data["status"] == "verified" else ""
+    summary = "".join(f"<p><strong>{_text(label)}:</strong> {_text(line)}</p>" for label, line in zip(
+        ("After the rollback", "What Rewind found", "What changed", "Who approved"), data["summary_lines"]))
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
 <title>Rewind · {_text(data['verdict'])} · {_text(data['source'])}</title><style>{_STYLE}</style></head><body><main>
+<section class="summary-card" aria-label="Run summary">{summary}</section>
 <header><p class="eyebrow">{_text(eyebrow)}</p><h1>Off is not undo.</h1>
 <p class="verdict {status_class}">Verdict: {_text(data['verdict'])}</p><dl class="facts">{facts_html}</dl></header>
 {error}
-<section><h2>What each user saw</h2>{_timeline(data['transitions'])}</section>
-<section><h2>What broke</h2>{_failures(data['transitions'])}</section>
-<section><h2>What Rewind tried</h2>{_attempt_cards(data['attempts'])}</section>
-<section><h2>Who approved the changes</h2>{_approval_cards(data['approvals'])}</section>
+<section><h2>Attempts</h2>{_attempt_cards(data['attempts'])}</section>
+<section><h2>Approvals</h2>{_approval_cards(data['approvals'])}</section>
+<section><h2>Changes made</h2>{_table(('When', 'Environment', 'Change', 'Status'), _change_rows(data['changes']), label='Recorded changes', empty='No changes recorded.')}</section>
 <section><h2>Target before and after</h2><p>Original failure reproduced on target: {_text(reproduction)}</p>
-<div class="pair"><div><h3>Before</h3>{_json_block(target['before']) if target['before'] else '<p>No target snapshot recorded.</p>'}</div>
-<div><h3>After</h3>{_json_block(target['after']) if target['after'] else '<p>No target replay observation recorded.</p>'}</div></div></section>
-<section><h2>Every recorded change</h2>{_table(('When', 'Environment', 'Change', 'Status'), _change_rows(data['changes']), empty='No changes recorded.')}</section>
+<div class="pair"><div><h3>Before</h3>{_target_state(target['before'], 'Target before the replay', 'No target snapshot recorded.')}</div>
+<div><h3>After</h3>{_target_state(target['after'], 'Target after the replay', 'No target replay observation recorded.')}</div></div></section>
+<section><h2>Full timeline</h2>{_timeline(data['transitions'])}</section>
 <footer><h2>What was not verified</h2><ul>{limits}</ul></footer>
 </main></body></html>
 """
 
 
-def write_report(run_path: Path, destination: Path | None = None, *, captured: bool = False) -> tuple[Path, dict]:
+def write_report(
+    run_path: Path, destination: Path | None = None, *, captured: bool = False, allowed_flags: Iterable[str] | None = None,
+) -> tuple[Path, dict]:
     try:
         run = json.loads(run_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
@@ -189,7 +226,7 @@ def write_report(run_path: Path, destination: Path | None = None, *, captured: b
     if not isinstance(run, dict) or not isinstance(run.get("status"), str) or run["status"] not in VERDICTS:
         raise ReportError("run.json does not contain a completed Rewind verdict")
     try:
-        data = public_report(run, captured=captured)
+        data = public_report(run, captured=captured, allowed_flags=allowed_flags)
         html = render_html(data)
         folder = destination or run_path.parent
         folder.mkdir(parents=True, exist_ok=True)

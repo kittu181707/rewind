@@ -1,12 +1,14 @@
 """Evidence report tests use captured data and do not launch a live run."""
 
 import json
+from copy import deepcopy
 from pathlib import Path
 import re
 
 import pytest
 
 from rewind.report import ReportError, write_report
+from rewind.report.data import public_report, utc_time
 
 
 CAPTURES = Path(__file__).resolve().parents[1] / "docs/captured-runs"
@@ -19,6 +21,14 @@ def test_captured_reports_keep_every_transition_user_and_change(tmp_path, case, 
     output, data = write_report(source, tmp_path)
     html = output.read_text()
     assert json.loads(output.with_suffix(".json").read_text()) == data
+    summary = html.split('aria-label="Run summary">', 1)[1].split("</section>", 1)[0]
+    assert summary.count("<p>") == 4
+    assert html.index('aria-label="Run summary"') < html.index("<header>")
+    assert html.count('class="timeline-event" open') == 1
+    assert html.count('class="timeline-event"') == len(run["transitions"])
+    headings = ["Attempts", "Approvals", "Changes made", "Target before and after", "Full timeline"]
+    assert [html.index(f"<h2>{heading}</h2>") for heading in headings] == sorted(html.index(f"<h2>{heading}</h2>") for heading in headings)
+    assert all(re.search(r'aria-label="[^"]+"', attrs) for attrs in re.findall(r'<div class="scroll" ([^>]+)>', html))
     header = html.split("<header>", 1)[1].split("</header>", 1)[0]
     for field in ("Off is not undo.", f"Verdict: {verdict}", "openai/gpt-oss-120b", "Approval mode", "scripted",
                   "Rehearsal", "Target", "Total time", "captured run", "scripted validation run"):
@@ -28,13 +38,17 @@ def test_captured_reports_keep_every_transition_user_and_change(tmp_path, case, 
         assert recorded["label"] == reported["label"]
         assert len(recorded["steps"]) == len(reported["steps"])
         for original, step in zip(recorded["steps"], reported["steps"]):
-            assert all(step[key] == original[key] for key in ("user", "http_status", "executed_version", "effective_flags"))
+            assert all(step[key] == original[key] for key in ("user", "http_status", "executed_version"))
+            assert step["effective_flags"] == {flag: value for flag, value in original["effective_flags"].items()
+                                               if flag in data["allowed_flags"]}
+    assert "show_demo_button" not in html and "show_demo_button" not in json.dumps(data)
     assert len(data["changes"]) == len(run["changes"])
     assert len(data["attempts"]) == len(run["attempts"])
     assert data["target"]["before"] == run["capture"]["target_before"]
     assert data["target"]["after"] == run["capture"]["target_after"]
     assert [gate["gate"] for gate in data["approvals"]] == [1, 2]
-    assert "What was not verified" in html and "What broke" in html
+    assert "What was not verified" in html and "Failed checks" in html
+    assert re.search(r"2026-11-\d\d \d\d:\d\d:\d\d UTC", summary)
     assert "prefers-color-scheme:dark" in html and 'name="viewport"' in html
     assert not re.search(r'\b(?:href|src)\s*=\s*["\']https?://', html)
     assert "<script" not in html and "default-src 'none'" in html
@@ -42,8 +56,25 @@ def test_captured_reports_keep_every_transition_user_and_change(tmp_path, case, 
         assert data["approvals"][1]["status"] == "not reached"
         assert "Unrecognized cart schema" in html
         assert "set override ON for segment vip_users" in html
+        assert "No verified fix found: 3 proposals rejected by the verifier. Target unchanged." in summary
     if case == "case-b":
         assert "delete override for segment vip_users" in html
+        assert "alice and carol still ran the new checkout" in summary
+        assert "Removed the override for segment vip_users on checkout_v2." in summary
+    if case == "case-a":
+        assert "alice and carol got HTTP 500" in summary
+    assert run["attempts"][-1]["proposal"]["diagnosis"] in summary
+
+
+def test_display_filter_and_utc_format_do_not_mutate_recorded_approvals():
+    run = json.loads((CAPTURES / "case-b/run.json").read_text())
+    before = deepcopy(run)
+    data = public_report(run, allowed_flags=("checkout_v2",))
+    assert run == before
+    assert data["approvals"][1]["operations"] == before["approvals"][1]["operations"]
+    assert data["approvals"][1]["snapshot_hash"] == before["approvals"][1]["snapshot_hash"]
+    assert all(set(step["effective_flags"]) <= {"checkout_v2"} for event in data["transitions"] for step in event["steps"])
+    assert utc_time("2026-11-27T07:23:11.667+05:30") == "2026-11-27 01:53:11 UTC"
 
 
 def test_rejected_proposal_is_recovered_from_audit_and_escaped(tmp_path, monkeypatch):

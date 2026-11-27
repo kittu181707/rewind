@@ -10,7 +10,17 @@
 rewind demo
 ```
 
-See a captured rollback failure, diagnosis, approvals, and staging verification in about ten seconds, with an offline report. [Install from the checkout](#run-it-for-real) to try it.
+See a captured rollback failure, diagnosis, approvals, and staging verification in about ten seconds, with an offline report.
+
+**Quick start** (Python 3.12; no credentials needed for replay):
+
+```bash
+git clone https://github.com/kittu181707/rewind.git && cd rewind
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -e . && rewind demo
+```
+
+You can also use `python -m rewind demo` from the activated environment.
 
 ## Live proof
 
@@ -20,7 +30,7 @@ See a captured rollback failure, diagnosis, approvals, and staging verification 
 | Case B | The default was OFF, but the VIP override kept two users on the new checkout. Removing that override returned them to legacy checkout. | [Open HTML](docs/sample-report-case-b.html) | [run.json](docs/captured-runs/case-b/run.json) |
 | Refusal | No tested setting restored the old checkout. The verifier rejected three proposals and Rewind left the target unchanged. | [Open HTML](docs/sample-report-refusal.html) | [run.json](docs/captured-runs/refusal/run.json) |
 
-Download the HTML to open it locally. The captures use real model and Flagsmith calls with **scripted approvals**. See the [validation tables and verbatim diagnoses](DAY3_NOTES.md), or replay the refusal with `rewind demo --case refusal`.
+Download the HTML to open it locally. The captures use real model and Flagsmith calls with **scripted approvals**. See the [validation tables and verbatim diagnoses](DAY3_NOTES.md), or replay Case B with `rewind demo --case b` and Refusal with `rewind demo --case refusal`.
 
 **Interactive approval:** The typed `yes` path is covered by tests. Separate human run: _evidence link pending_.
 
@@ -72,11 +82,11 @@ python -m pip install -e '.[dev]'
 | `FLAGSMITH_ENV_KEY_REHEARSAL` | SDK key for `rehearsal`, used for flag evaluation and to select the environment in CLI commands. |
 | `FLAGSMITH_ENV_KEY_TARGET` | Distinct SDK key for `demo-target`. A staging approval is still required before any target writes. |
 | `FLAGSMITH_API_KEY` | Optional Flagsmith management key for headless CLI authentication, in place of `flagsmith login`. This is separate from the two SDK keys. |
-| `GEMINI_API_KEY` | Unused by the demo and live checks. The historical validation harness still checks its presence during preflight. |
 | `APP_VARIANT` | Optional demo-shop setting. Use `no_compat` for Refusal; leave it unset for Case A or Case B. |
-| `FLAGSMITH_ENV_KEY`, `DB_PATH` | Set by Rewind for each app subprocess: its own SDK key and disposable database path. Set them yourself only if starting the shop by hand. |
-| `PORT` | Optional default when starting the shop directly; Rewind passes the configured port. |
-| `FLAGSMITH_NO_INPUT` | Set by the validation harness to stop the Flagsmith CLI from opening an interactive login. It does not bypass Rewind approval. |
+
+Rewind sets `FLAGSMITH_ENV_KEY` and `DB_PATH` for each app instance and passes the configured port (`PORT` is only a default for starting the shop by hand).
+
+**Validation harness only:** Its preflight still checks for `GEMINI_API_KEY`, and it sets `FLAGSMITH_NO_INPUT` to prevent interactive Flagsmith login. Neither is needed for `rewind demo` or the normal `rewind check`.
 
 Put your live credentials in the ignored `.env` using `.env.example` as a guide, or export them in the shell. Run `flagsmith login` in the checkout using the system keychain, or use `FLAGSMITH_API_KEY`. Confirm `flagsmith environment list` shows both intended environments and the CLI is bound to the right project. The WSL development machine used a headless keyring wrapper; it is not part of Rewind.
 
@@ -114,11 +124,11 @@ At [`agent-freeze-2`](https://github.com/kittu181707/rewind/tree/agent-freeze-2)
 
 ## Prior work
 
-A pre-event throwaway spike in `~/rewind-spike` verified the Flagsmith CLI forms, remote identity evaluation, and propagation checks reused in the hackathon build.
+A throwaway pre-event spike outside this repository verified the Flagsmith command forms and evaluation behaviour.
 
 ## AI tools used
 
-OpenCode assisted implementation, tests, and documentation. Claude provided review feedback. Rewind's live diagnostic model is Groq `openai/gpt-oss-120b`; [the validation notes](DAY3_NOTES.md) distinguish model output from fixed verification and scripted approval.
+TODO: Add the AI tools used during the hackathon.
 
 ## License
 

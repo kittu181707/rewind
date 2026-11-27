@@ -1,6 +1,7 @@
 """Build browser replay assets from the same evidence as the terminal demo."""
 
 from dataclasses import asdict
+from datetime import datetime
 import json
 from pathlib import Path
 
@@ -33,17 +34,67 @@ def _gate_event(gate: dict, data: dict, start: dict | None = None) -> RunEvent:
                              "writes": [{"text": describe_write(*op)} for op in gate.get("operations", [])]})
 
 
+def _replay_inventory(run: dict, data: dict) -> list[dict]:
+    allowed = set(data.get("allowed_flags") or [])
+    env_order = []
+    for key in ("rehearsal", "target"):
+        name = (data.get("environments") or {}).get(key)
+        if name and name not in env_order:
+            env_order.append(name)
+    snapshots_by_env: dict[str, dict] = {}
+    for snap in run.get("snapshots", []):
+        env = snap.get("environment")
+        state = snap.get("state") or {}
+        if env and env not in snapshots_by_env and "flags" in state:
+            snapshots_by_env[env] = state["flags"]
+    flags: dict[str, dict] = {}
+    for env in env_order or list(snapshots_by_env):
+        for name, setting in (snapshots_by_env.get(env) or {}).items():
+            entry = flags.setdefault(name, {"name": name, "allowed": name in allowed, "environments": []})
+            overrides = [
+                {"kind": kind, "name": ov_name, "enabled": ov_entry.get("enabled")}
+                for kind, key in (("segment", "overrides"), ("identity", "identity_overrides_detail"))
+                for ov_name, ov_entry in (setting.get(key) or {}).items()
+            ]
+            entry["environments"].append({"name": env, "enabled": setting.get("enabled"), "overrides": overrides})
+    return [flags[name] for name in sorted(flags)]
+
+
+def _elapsed_from_run(started_at: str | None, stamp: str | None) -> float | None:
+    if not started_at or not stamp:
+        return None
+    try:
+        start_dt = datetime.fromisoformat(started_at)
+        end_dt = datetime.fromisoformat(stamp)
+        return round(max(0.0, (end_dt - start_dt).total_seconds()), 1)
+    except ValueError:
+        return None
+
+
 def _events(run: dict, data: dict, report: str) -> list[dict]:
-    events = [RunEvent("started", {})]
+    started_at = run.get("started_at")
+    envs = data.get("environments") or {}
+    events = [RunEvent("started", {
+        "rehearsal": envs.get("rehearsal", "rehearsal"),
+        "target": envs.get("target", "demo-target"),
+        "prompt": (data.get("request") or {}).get("text") or f"Replay {data.get('capture', {}).get('label') or 'captured run'}",
+    })]
+    inv = _replay_inventory(run, data)
+    if inv:
+        events.append(RunEvent("inventory", {"flags": inv}))
     if data.get("request"):
         events.append(RunEvent("interpretation", data["request"]))
     events.append(_gate_event(data["approvals"][0], data))
-    target = data.get("environments", {}).get("target")
+    target = envs.get("target")
     attempts = iter(data["attempts"])
     for event in run["transitions"]:
         if event.get("environment") == target:
             continue
-        events.append(RunEvent("progress", {"text": event["label"]}))
+        events.append(RunEvent("progress", {
+            "text": event["label"],
+            "environment": event.get("environment"),
+            "elapsed_s": _elapsed_from_run(started_at, event.get("timestamp")),
+        }))
         if event["label"].endswith("verify before recovery") and not event["ok"]:
             events.append(RunEvent("failure", failure_event(event)))
             attempt = next(attempts, None)
@@ -54,7 +105,13 @@ def _events(run: dict, data: dict, report: str) -> list[dict]:
         start = next((snapshot["state"] for snapshot in run.get("snapshots", [])
                       if snapshot.get("phase") == "Target starting snapshot"), {})
         events.append(_gate_event(data["approvals"][1], data, start))
-    events.extend(RunEvent("progress", {"text": event["label"]}) for event in run["transitions"] if event.get("environment") == target)
+    for event in run["transitions"]:
+        if event.get("environment") == target:
+            events.append(RunEvent("progress", {
+                "text": event["label"],
+                "environment": event.get("environment"),
+                "elapsed_s": _elapsed_from_run(started_at, event.get("timestamp")),
+            }))
     events.append(final_event(data, report))
     return [redact_event(asdict(event)) for event in events]
 

@@ -5,7 +5,17 @@ from typing import Literal
 
 from rewind.report.data import REJECTED_SUGGESTION, describe_write, failure_summary
 
-EventType = Literal["started", "interpretation", "progress", "failure", "attempt", "gate", "decision", "final"]
+EventType = Literal[
+    "started",
+    "inventory",
+    "interpretation",
+    "progress",
+    "failure",
+    "attempt",
+    "gate",
+    "decision",
+    "final",
+]
 
 
 @dataclass(frozen=True)
@@ -15,8 +25,20 @@ class RunEvent:
 
 
 def failure_event(transition: dict) -> dict:
-    rows = [{"user": user, "http_status": result.get("http_status"), "version": result.get("executed_version")}
-            for user, result in transition.get("user_outcomes", {}).items()]
+    wrong_version = {
+        item.get("user")
+        for item in transition.get("failed_assertions", [])
+        if item.get("assertion") in {"executed_version_matches_goal", "direct_executed_version_matches_goal"}
+    }
+    rows = [
+        {
+            "user": user,
+            "http_status": result.get("http_status"),
+            "version": result.get("executed_version"),
+            "version_ok": user not in wrong_version,
+        }
+        for user, result in transition.get("user_outcomes", {}).items()
+    ]
     return {"problem": failure_summary(transition), "users": rows}
 
 
@@ -43,5 +65,7 @@ def final_event(data: dict, report: str) -> RunEvent:
         "approval_denied": "Approval declined. Target unchanged by Rewind.",
         "stopped": "Rewind stopped. See the report for the recorded changes.",
     }
-    return RunEvent("final", {"verdict": data["verdict"], "text": outcome[data["status"]], "error": data.get("error"),
-                             "ledger": data["autonomy_summary"], "breakdown": data["autonomy_breakdown"], "report": report})
+    return RunEvent("final", {"verdict": data["verdict"], "status": data["status"], "text": outcome[data["status"]],
+                              "error": data.get("error"), "ledger": data["autonomy_summary"],
+                              "ledger_counts": data.get("autonomy_ledger"),
+                              "breakdown": data["autonomy_breakdown"], "report": report})

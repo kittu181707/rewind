@@ -1,5 +1,7 @@
 # Rewind
 
+[![Open in Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/kittu181707/rewind?quickstart=1)
+
 **Off is not undo.**
 
 > Rewind checks whether turning a feature off really restores the old experience without breaking saved user data. With your approval, it rehearses the transition on an isolated test copy of your app using real Flagsmith configuration. If it fails, the agent investigates the evidence and tests up to three configuration-only recovery plans. A separate approval is required before a verified plan is applied to the target environment.
@@ -21,6 +23,12 @@ pip install -e . && rewind demo
 ```
 
 You can also use `python -m rewind demo` from the activated environment.
+
+## Try it in the browser
+
+[Open the browser replay](https://kittu181707.github.io/rewind/) and pick Case A, Case B, or Refusal. Click through the recorded approval gates and open the evidence report. It uses captured data and needs no account, key, or Flagsmith connection.
+
+Run `rewind ui --replay` locally to get a browser launcher, or `rewind ui --export docs/replay` to regenerate the offline site. To start a live run, use `rewind ui --config examples/demo-shop/rewind.config.yaml` and open the launcher file it prints.
 
 ## Why this exists
 

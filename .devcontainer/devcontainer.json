@@ -1,0 +1,5 @@
+{
+  "name": "Rewind (Python 3.12)",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
+  "postCreateCommand": "python -m pip install -e ."
+}

@@ -9,7 +9,7 @@ import pytest
 from rewind.config import load_config
 from scripts.summarize_run import main, summarize
 from scripts.target_hash import read_target
-from scripts import validate_day2
+from scripts import validate_live
 
 
 CONFIG = Path(__file__).resolve().parents[1] / "examples/demo-shop/rewind.config.yaml"
@@ -84,12 +84,12 @@ def test_validation_write_trace_guards_scope_without_retaining_keys(monkeypatch)
         calls.append(argv)
         return subprocess.CompletedProcess(argv, 0)
 
-    trace = validate_day2.WriteTrace(cfg, {cfg.flagsmith.rehearsal.environment}, runner=runner)
+    trace = validate_live.WriteTrace(cfg, {cfg.flagsmith.rehearsal.environment}, runner=runner)
     argv = ["flagsmith", "flag", "update", "checkout_v2", "--disable", "--environment", rehearsal_key, "--yes"]
     trace(argv, {})
-    with pytest.raises(validate_day2.ValidationError, match="out-of-scope Flagsmith environment"):
+    with pytest.raises(validate_live.ValidationError, match="out-of-scope Flagsmith environment"):
         trace([*argv[:-2], target_key, "--yes"], {})
-    with pytest.raises(validate_day2.ValidationError, match="out-of-scope override"):
+    with pytest.raises(validate_live.ValidationError, match="out-of-scope override"):
         trace([*argv[:5], "--identifier", "alice", *argv[5:]], {})
     assert calls == [argv] and len(trace.writes) == 1
     assert trace.writes[0]["environment"] == "rehearsal" and trace.writes[0]["status"] == "applied"
@@ -98,19 +98,19 @@ def test_validation_write_trace_guards_scope_without_retaining_keys(monkeypatch)
 
 def test_retry_never_follows_a_target_write_or_agent_refusal():
     flaky = {"status": "stopped", "llm_calls": [{"outcome": "rate_limited"}]}
-    assert validate_day2.is_flaky({"writes": []}, flaky)
-    assert not validate_day2.is_flaky({"writes": [{"environment": "demo-target"}]}, flaky)
-    assert not validate_day2.is_flaky({"writes": []}, {**flaky, "status": "refused"})
-    assert not validate_day2.is_flaky({"writes": []}, {"status": "stopped", "llm_calls": [{"outcome": "error"}]})
-    assert validate_day2.is_flaky({"writes": []}, {"status": "stopped", "error_kind": "provider"})
+    assert validate_live.is_flaky({"writes": []}, flaky)
+    assert not validate_live.is_flaky({"writes": [{"environment": "demo-target"}]}, flaky)
+    assert not validate_live.is_flaky({"writes": []}, {**flaky, "status": "refused"})
+    assert not validate_live.is_flaky({"writes": []}, {"status": "stopped", "llm_calls": [{"outcome": "error"}]})
+    assert validate_live.is_flaky({"writes": []}, {"status": "stopped", "error_kind": "provider"})
 
 
 def test_verified_validation_cases_stop_at_first_rejected_proposal():
     config = load_config(CONFIG)
     assert config.agent
-    adapter = validate_day2.FirstProposalModel(config.agent, post=lambda *a, **kw: pytest.fail("Unexpected provider request"))
+    adapter = validate_live.FirstProposalModel(config.agent, post=lambda *a, **kw: pytest.fail("Unexpected provider request"))
     messages = [{"role": "system"}, {"role": "user", "content": '{"previous_attempts":[{"status":"failed"}]}'}]
-    with pytest.raises(validate_day2.ValidationError, match="first rehearsal proposal failed"):
+    with pytest.raises(validate_live.ValidationError, match="first rehearsal proposal failed"):
         adapter.complete(messages, [])
 
 
@@ -120,8 +120,8 @@ def test_secret_audit_counts_occurrences_without_values_or_urls(tmp_path, monkey
     artifact = tmp_path / ".artifacts" / "run.json"
     artifact.parent.mkdir()
     artifact.write_text(f"{marker} {marker} {url}")
-    monkeypatch.setattr(validate_day2, "_historical_contents", lambda root: iter([marker.encode(), b"clean"]))
-    audit = validate_day2.secrets_audit(tmp_path, {"SYNTHETIC_KEY": marker, "EMPTY": ""})
+    monkeypatch.setattr(validate_live, "_historical_contents", lambda root: iter([marker.encode(), b"clean"]))
+    audit = validate_live.secrets_audit(tmp_path, {"SYNTHETIC_KEY": marker, "EMPTY": ""})
     assert audit == {
         "status": "FAIL", "captured_outputs": {"scanned": 1, "value_matches": {"SYNTHETIC_KEY": 2}, "auth_url_matches": 1},
         "git_history": {"scanned": 2, "value_matches": {"SYNTHETIC_KEY": 1}, "auth_url_matches": 0},

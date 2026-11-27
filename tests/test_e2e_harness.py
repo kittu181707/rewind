@@ -1,4 +1,4 @@
-"""Offline regression tests for scripts/verify_day1_e2e.py evidence retention and DB write enumeration."""
+"""Offline regression tests for scripts/verify_e2e.py evidence retention and DB write enumeration."""
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 def _load_e2e_module():
     spec = importlib.util.spec_from_file_location(
-        "verify_day1_e2e",
-        REPO_ROOT / "scripts" / "verify_day1_e2e.py",
+        "verify_e2e",
+        REPO_ROOT / "scripts" / "verify_e2e.py",
     )
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)

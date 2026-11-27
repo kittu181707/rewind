@@ -1,4 +1,4 @@
-"""Step 9 End-to-End Live Verification (No LLM) using seed, demo-shop, verifier, and flagsmith_ops."""
+"""Deterministic End-to-End Live Verification (No LLM) using seed, demo-shop, verifier, and flagsmith_ops."""
 
 from __future__ import annotations
 
@@ -248,7 +248,7 @@ def _prepare_target_case_a(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run live no-LLM Step 9 E2E verification.")
+    parser = argparse.ArgumentParser(description="Run deterministic no-LLM E2E verification.")
     parser.add_argument("--output-dir", default=None, help="Directory for persistent redacted E2E evidence.")
     args = parser.parse_args(argv)
 
@@ -291,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
                 status="FAILED_FAST",
             )
             raise RuntimeError(
-                f"Step 9 fail-fast abort at {row.scenario} / {row.step}: "
+                f"E2E fail-fast abort at {row.scenario} / {row.step}: "
                 f"expected={row.expected}, observed={row.observed} (alice={row.alice}, carol={row.carol}, bob={row.bob}). "
                 f"Redacted evidence saved to {summary_path}"
             )
@@ -689,7 +689,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"- {fw}")
 
     print(f"\nRedacted E2E evidence retained in: {summary_path}")
-    print(f"STEP9_OVERALL: PASS ({len(rows)}/{len(rows)} assertions)")
+    print(f"E2E_OVERALL: PASS ({len(rows)}/{len(rows)} assertions)")
     return 0
 
 

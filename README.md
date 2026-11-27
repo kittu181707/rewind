@@ -45,7 +45,7 @@ Rewind automates that staging rehearsal and keeps a person in charge of every ch
 | Case B | The default was OFF, but the VIP override kept two users on the new checkout. Removing that override returned them to legacy checkout. | [Open HTML](docs/sample-report-case-b.html) | [run.json](docs/captured-runs/case-b/run.json) |
 | Refusal | No tested setting restored the old checkout. The verifier rejected three proposals and Rewind left the target unchanged. | [Open HTML](docs/sample-report-refusal.html) | [run.json](docs/captured-runs/refusal/run.json) |
 
-Download the HTML to open it locally. The captures use real model and Flagsmith calls with **scripted approvals**. See the [validation tables and verbatim diagnoses](DAY3_NOTES.md), or replay Case B with `rewind demo --case b` and Refusal with `rewind demo --case refusal`.
+Download the HTML to open it locally. The captures use real model and Flagsmith calls with **scripted approvals**. See the [validation tables and verbatim diagnoses](docs/validation.md), or replay Case B with `rewind demo --case b` and Refusal with `rewind demo --case refusal`.
 
 **Case A in the shop:** After a plain rollback, Alice (VIP) sees an HTTP 500 because legacy checkout cannot read her saved v2 cart.
 
@@ -72,7 +72,7 @@ The verifier checks which checkout actually ran, whether it completed, and wheth
 | Stop without touching target if no configuration-only plan passes. | **Drift:** Stop and require a fresh Gate 2 if target settings changed. |
 | Record the checks, approvals, and changes made. | **Target failure:** Report what changed and ask before any recovery action. Never revert automatically. |
 
-See [the autonomy guide](docs/autonomy.md).
+Each run counts autonomous reads/checks vs shown approval prompts in the autonomy ledger; uncertain writes remain visible without counting as confirmed.
 
 ## How it uses Flagsmith
 
@@ -126,16 +126,16 @@ Start from the [demo config](examples/demo-shop/rewind.config.yaml) and use a sa
 
 - **Config:** Supply the two environment names and the names of their key variables, separate ports, trusted app start/reset/journey commands, allowlisted source paths, the rollback flag/direction/goal, test identities and traits, and allowed flag changes. List the fixture writes the target journey will perform.
 - **App and data:** Start on loopback and expose a ready `/health` endpoint. Accept the SDK key and a separate database path for each instance. A reset must restore the fixture before trying a new plan.
-- **Journey:** Implement `prepare` and `verify` in a trusted command. It receives the app URL, phase, config path, state file, and expected flags. It emits one JSON result with named user steps, HTTP status, the version that actually ran, effective flags, and pass/fail assertions. After a flag write, wait for three consecutive matching `/eval` reads; use the cart or checkout response itself to verify what actually ran and what state survived. See the [journey contract](AGENTS.md#72-journey-contract-any-language) and the [working example](examples/demo-shop/journey.py).
+- **Journey:** Implement `prepare` and `verify` in a trusted command. It receives the app URL, phase, config path, state file, and expected flags. It emits one JSON result with named user steps, HTTP status, the version that actually ran, effective flags, and pass/fail assertions. After a flag write, wait for three consecutive matching `/eval` reads; use the cart or checkout response itself to verify what actually ran and what state survived. See the [journey contract](docs/connect-your-app.md#3-journey-json-contract) and the [working example](examples/demo-shop/journey.py).
 
 ## Validation results
 
 At [`agent-freeze-2`](https://github.com/kittu181707/rewind/tree/agent-freeze-2), the three Case A revalidations and three Case B runs verified on the first proposal. The three Refusal runs stopped with unchanged target hashes after the **verifier rejected three proposals each**. The model did not identify the missing code path and call `report_no_fix` in those live runs.
 
 - **Initial V1 failed.** The model proposed sending VIP users back to the new checkout. Rewind rejected it; the later model call failed before Gate 2.
-- **Revision 1** gave the model the configured rollback goal, required source and evidence reads, and reduced the size of the evidence sent. V1–V8 passed under the retry policy; two Refusal runs initially hit Groq HTTP 400 for an undeclared `json` tool, then passed on retry. See the [Day 2 results](DAY2_NOTES.md#revision-1-outcomes).
-- **Revision 2 — post-freeze refusal fix.** Use the declared terminal `report_no_fix(reason)` tool after the required reads. The tested legacy reply parser remains for compatibility. Case A and Refusal revalidation each passed **3/3** with no whole-run retries or HTTP 400s. See the [freeze manifest](docs/freeze.md#revision-2--refusal-protocol) and [Day 3 results](DAY3_NOTES.md#1-refusal-protocol-revalidation).
-- **Case B passed 3/3.** Case B was part of the earlier model comparison. The agent code was frozen before these integrated runs and was not changed in response to their results. See [both hashes and the verbatim diagnoses](DAY3_NOTES.md#2-case-b-with-the-frozen-agent).
+- **Revision 1** gave the model the configured rollback goal, required source and evidence reads, and reduced the size of the evidence sent. V1–V8 passed under the retry policy; two Refusal runs initially hit Groq HTTP 400 for an undeclared `json` tool, then passed on retry. See the [Revision 1 results](docs/validation.md#revision-1-outcomes).
+- **Revision 2 — post-freeze refusal fix.** Use the declared terminal `report_no_fix(reason)` tool after the required reads. The tested legacy reply parser remains for compatibility. Case A and Refusal revalidation each passed **3/3** with no whole-run retries or HTTP 400s. See the [freeze manifest](docs/validation.md#revision-2--refusal-protocol) and [Revision 2 results](docs/validation.md#1-refusal-protocol-revalidation).
+- **Case B passed 3/3.** Case B was part of the earlier model comparison. The agent code was frozen before these integrated runs and was not changed in response to their results. See [both hashes and the verbatim diagnoses](docs/validation.md#2-case-b-with-the-frozen-agent).
 
 ## Honest limits
 
@@ -152,6 +152,12 @@ A throwaway pre-event spike outside this repository verified the Flagsmith comma
 ## AI tools used
 
 TODO: Add the AI tools used during the hackathon.
+
+## Next steps
+
+- Interactive human approval recording alongside scripted validation.
+- Additional sample application examples beyond the demo shop.
+- Optional Flagsmith Change Requests and multi-condition rollout rules.
 
 ## License
 

@@ -71,7 +71,7 @@ SCENARIOS = (
     *(Scenario(f"V{n}", "refusal", ("yes",), "refused") for n in range(6, 9)),
 )
 BATCHES = {
-    "day2": SCENARIOS,
+    "baseline": SCENARIOS,
     "refusal-protocol": SCENARIOS[2:],
     "case-b": tuple(Scenario(f"B{n}", "b", ("yes", "yes"), "verified") for n in range(1, 4)),
 }
@@ -170,7 +170,7 @@ def preflight(config: RewindConfig, values: dict, log, batch: str) -> dict:
     require(not dirty, f"git status --porcelain: working tree has {len(dirty.splitlines())} change(s)")
     head = git_bytes(ROOT, "rev-parse", "HEAD").decode().strip()
     original_freeze = bool(git_bytes(ROOT, "tag", "--list", "agent-freeze").strip())
-    require(original_freeze == (batch != "day2"), "Unexpected agent-freeze tag state for this batch")
+    require(original_freeze == (batch != "baseline"), "Unexpected agent-freeze tag state for this batch")
     if batch == "case-b":
         frozen = git_bytes(ROOT, "rev-parse", "agent-freeze-2^{}").decode().strip()
         require(head == frozen, "Case B must run at agent-freeze-2")
@@ -463,7 +463,7 @@ def write_audits(rows: list[dict]) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--batch", choices=BATCHES, default="day2")
+    parser.add_argument("--batch", choices=BATCHES, default="baseline")
     batch = parser.parse_args(argv).batch
     require(Path.cwd().resolve() == ROOT, "Run from the repository root")
     values = dict(dotenv_values(ROOT / ".env"))
@@ -491,7 +491,7 @@ def main(argv: list[str] | None = None) -> int:
                     if record["runs"]:
                         time.sleep(RUN_INTERVAL_SECONDS)
                     print(f"{scenario.name}.{number}: starting {scenario.case}, scripted approvals", flush=True)
-                    row = run_scenario(scenario, number, config, folder, values, provider_only_retry=batch != "day2")
+                    row = run_scenario(scenario, number, config, folder, values, provider_only_retry=batch != "baseline")
                     record["runs"].append(row)
                     save()
                     summary = row.get("summary", {})

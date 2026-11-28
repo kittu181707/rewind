@@ -378,16 +378,17 @@ button[data-loading="true"]::after {
 
 .flag-head {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-8);
-  margin-bottom: var(--space-4);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+  margin-bottom: var(--space-8);
 }
 
 .flag-name {
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .flag-envs {

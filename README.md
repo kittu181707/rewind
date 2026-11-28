@@ -21,7 +21,6 @@ TODO: Add why I built this (user answers pending).
 ## Try it
 
 [![Open in Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/kittu181707/rewind?quickstart=1)
-
 Open the [captured browser replay](https://kittu181707.github.io/rewind/) or run `pip install -e . && rewind ui --replay` locally (no keys required).
 
 ## Run it live
@@ -38,7 +37,6 @@ Open the [captured browser replay](https://kittu181707.github.io/rewind/) or run
 flagsmith environment list && rewind seed --case a
 rewind ui --config examples/demo-shop/rewind.config.yaml  # then type "roll back checkout_v2"
 ```
-
 Terminal alternative: `rewind do "roll back checkout_v2" --config examples/demo-shop/rewind.config.yaml`.
 
 ## How it uses Flagsmith
@@ -60,14 +58,10 @@ Rewind uses the Flagsmith CLI instead of the MCP server because every write is a
 - The planner models Boolean equality rules only and Gemini fallback is disabled in live runs.
 - Next steps: record interactive human approvals, add another example app, and support multi-condition rules.
 
-## Docs
-
-[Validation & checksums](docs/validation.md) | [Connect your app](docs/connect-your-app.md) | [Sample reports](docs/sample-report-case-a.html) ([Case B](docs/sample-report-case-b.html), [Refusal](docs/sample-report-refusal.html))
-
 ## AI tools used
 
 TODO: Add AI tools used (user answers pending).
 
-## License
+## Docs & license
 
-[MIT](LICENSE)
+[Validation & checksums](docs/validation.md) | [Connect your app](docs/connect-your-app.md) | [Sample reports](docs/sample-report-case-a.html) ([Case B](docs/sample-report-case-b.html), [Refusal](docs/sample-report-refusal.html)) | [MIT License](LICENSE)

@@ -65,7 +65,7 @@ rewind seed --case a
 rewind ui --config examples/demo-shop/rewind.config.yaml
 ```
 Open the launcher file and enter `roll back checkout_v2`. Seed changes rehearsal settings only.
-**Interactive approval:** The typed `yes` path is covered by tests. Separate human run: _evidence link pending_.
+The recorded runs used scripted approvals. Human-approved run: pending.
 
 ## How it uses Flagsmith
 | Feature | What Rewind checks or changes |

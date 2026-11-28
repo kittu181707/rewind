@@ -1,9 +1,12 @@
 # Rewind
 
-**Off is not undo.** Rewind rehearses a Flagsmith rollback, checks what breaks, and applies a verified fix to staging after you approve it.
+**Off is not undo.** Rewind rehearses a Flagsmith rollback on an isolated copy of your app and asks before applying a verified fix to staging.
 
-[![Case A replay: the rollback broke two VIP carts; Rewind shows the tested fix and asks before changing staging.](docs/screens/ui-case-a-gate2.png)](https://kittu181707.github.io/rewind/)
+**[Try the browser replay](https://kittu181707.github.io/rewind/)** (no account or keys) · [See the Case B report](docs/sample-report-case-b.html)
 
+[![Rewind’s current UI with the flag inventory, the checkout version each user got, and the targeting override that explains the failure.](docs/screens/rewind-case-b-replay.png)](https://kittu181707.github.io/rewind/)
+
+Every checkout returned HTTP 200, but Alice and Carol still got the new checkout. In this captured run, Rewind traced the difference to a VIP override that kept the flag on for them.
 ## Why I built this
 I reproduced two failures in a demo shop: (a) the old version cannot read data the new one saved, so VIP carts get HTTP 500 after rollback; (b) a targeting override keeps some users on the new version even though the default is OFF, with no error.
 
@@ -11,18 +14,18 @@ I reproduced two failures in a demo shop: (a) the old version cannot read data t
 - “A rollback that touches a database or reopens a fixed bug needs a person…” ([Flagsmith’s automatic rollback guide](https://www.flagsmith.com/blog/automatic-rollback))
 
 ## What it does
-1. Ask to roll back a feature. Approve switching the flag off in an isolated copy of the shop.
-2. Rewind checks what each user sees and whether their latest saved data still works. If something breaks, the agent reads the evidence and proposes a Flagsmith change.
-3. A fixed test the agent cannot edit checks up to three fixes. If none passes, staging stays untouched.
-4. Approve the exact staging plan. Rewind checks for changed settings, reproduces the failure on staging, applies the fix, and tests again.
+1. Approve a rehearsal. Rewind saves test data, then switches the flag off in isolation.
+2. See what each user got after the change. If a check fails, the agent reads the evidence and proposes a Flagsmith setting change.
+3. Rewind tests up to three fixes against the same users and data. The agent cannot edit those tests. If none passes, staging stays untouched.
+4. Approve the exact staging writes. Rewind checks that staging still matches the approved starting state, then reproduces the failure, applies the fix, and tests again.
 
 | Rewind does on its own | You decide |
 | --- | --- |
-| Reads evidence, diagnoses failures, and tests possible fixes in the approved rehearsal. | Whether to start the rehearsal and whether to apply the exact staging plan. |
-| Stops and reports what changed if staging settings drift or the staging test fails. | Whether to approve a fresh plan or take a separate recovery action. |
+| Reads evidence, tests fixes in rehearsal, and reports unexpected changes or failures on staging. | Whether to approve rehearsal, the exact staging plan, or a separate recovery action. |
 
 ## Try it
-Open the [browser replay](https://kittu181707.github.io/rewind/) and choose Case A, Case B, or Refusal. These captured runs used real Flagsmith and model calls with scripted approvals. Replay needs no keys and executes nothing. With Python 3.12, run `python -m pip install -e .` and `rewind ui --replay` from the checkout. [![Open in Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/kittu181707/rewind?quickstart=1)
+Pick **Case A** for an HTTP 500 on saved carts, **Case B** for the silent VIP override, or **Refusal** to see staging stay untouched. These are captured runs with real Flagsmith and model calls and scripted approvals. Replay executes nothing.
+From the checkout with Python 3.12, run `python -m pip install -e .` then `rewind ui --replay`. [![Open in Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/kittu181707/rewind?quickstart=1)
 
 ## Run it live
 Install Flagsmith CLI v2 and use two dedicated test environments with disposable data. Run `flagsmith login` or set the management key below. Use the [demo config](examples/demo-shop/rewind.config.yaml) and put credentials in your shell or an ignored `.env`.
@@ -34,14 +37,12 @@ Install Flagsmith CLI v2 and use two dedicated test environments with disposable
 | `FLAGSMITH_ENV_KEY_TARGET` | Separate SDK key for `demo-target` (staging). |
 | `FLAGSMITH_API_KEY` | Optional CLI management key, in place of `flagsmith login`. |
 | `APP_VARIANT` | Optional. Use `no_compat` for Refusal after seeding `--case refusal`. |
-
 ```bash
 flagsmith environment list
 rewind seed --case a
 rewind ui --config examples/demo-shop/rewind.config.yaml
 ```
-Open the launcher file the CLI prints and type `roll back checkout_v2`. Seed changes rehearsal settings only.
-
+Open the launcher file and enter `roll back checkout_v2`. Seed changes rehearsal settings only.
 **Interactive approval:** The typed `yes` path is covered by tests. Separate human run: _evidence link pending_.
 
 ## How it uses Flagsmith
@@ -61,9 +62,8 @@ Open the launcher file the CLI prints and type `roll back checkout_v2`. Seed cha
 - Record a run with a person approving both plans.
 - Time the same rollback with and without Rewind.
 - Test the integration with a second app.
-
 ## Docs
-[Connect your app](docs/connect-your-app.md) · [Validation and checksums](docs/validation.md) · Sample reports: [Case A](docs/sample-report-case-a.html), [Case B](docs/sample-report-case-b.html), [Refusal](docs/sample-report-refusal.html)
+[Connect your app](docs/connect-your-app.md) · [Validation and checksums](docs/validation.md) · Other reports: [Case A](docs/sample-report-case-a.html), [Refusal](docs/sample-report-refusal.html)
 ## AI tools used
 Author disclosure pending.
 

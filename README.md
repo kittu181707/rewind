@@ -1,8 +1,12 @@
 # Rewind
 
+An AI agent that helps developers roll back a feature flag without breaking their users.
+
 **Off is not undo.** Rewind rehearses a Flagsmith rollback on an isolated copy of your app and asks before applying a verified fix to staging.
 
 **[Try the browser replay](https://kittu181707.github.io/rewind/)** (no account or keys) · [See the Case B report](docs/sample-report-case-b.html)
+
+Demo video: [VIDEO LINK]
 
 [![Rewind’s current UI with the flag inventory, the checkout version each user got, and the targeting override that explains the failure.](docs/screens/rewind-case-b-replay.png)](https://kittu181707.github.io/rewind/)
 
@@ -35,9 +39,15 @@ I reproduced two failures in a demo shop: (a) the old version cannot read data t
 
 *Approval 2: apply these exact changes to staging*
 
+## How it works
+
+I approve the rehearsal. Rewind rehearses the rollback so I can see what breaks. The AI reads the code and flag settings and proposes a fix. The checker verifies it. I approve the exact staging changes, then Rewind reproduces the failure on staging, applies the fix, and verifies again.
+
 ## Try it
 Pick **Case A** for an HTTP 500 on saved carts, **Case B** for the silent VIP override, or **Refusal** to see staging stay untouched. These are captured runs with real Flagsmith and model calls and scripted approvals. Replay executes nothing.
 From the checkout with Python 3.12, run `python -m pip install -e .` then `rewind ui --replay`. [![Open in Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/kittu181707/rewind?quickstart=1)
+
+I tested this on one demo shop with three users on a rehearsal and a staging environment; a pass means that journey works on staging.
 
 ## Run it live
 Install Flagsmith CLI v2 and use two dedicated test environments with disposable data. Run `flagsmith login` or set the management key below. Use the [demo config](examples/demo-shop/rewind.config.yaml) and put credentials in your shell or an ignored `.env`.
@@ -64,5 +74,15 @@ Open the launcher file and enter `roll back checkout_v2`. Seed changes rehearsal
 | Identities and traits | Checks which flags each test user actually received. |
 | Defaults and segment overrides | Finds settings such as a VIP override that survives a rollback. |
 | [CLI and audit log](docs/how-rewind-uses-flagsmith.md) | Runs approved writes with allowlisted arguments and no shell. Check the provider audit log where available. |
+
+I used the Flagsmith CLI instead of the MCP server because every write is an allowlisted argument list run without a shell.
+
+## Built with
+
+I built this with Python 3.12, FastAPI, the Flagsmith CLI and Python SDK, and Groq `openai/gpt-oss-120b`.
+
+AI tools I used: TODO (the user's words)
+
+## License
 
 [MIT License](LICENSE)

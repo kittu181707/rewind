@@ -11,7 +11,9 @@ Demo video: [VIDEO LINK]
 [![Rewind’s current UI with the flag inventory, the checkout version each user got, and the targeting override that explains the failure.](docs/screens/rewind-case-b-replay.png)](https://kittu181707.github.io/rewind/)
 
 Every checkout returned HTTP 200, but Alice and Carol still got the new checkout. In this captured run, Rewind traced the difference to a VIP override that kept the flag on for them.
+
 ## Why I built this
+
 I reproduced two failures in a demo shop: (a) the old version cannot read data the new one saved, so VIP carts get HTTP 500 after rollback; (b) a targeting override keeps some users on the new version even though the default is OFF, with no error.
 
 ![The demo shop shows HTTP 500 for Alice's saved v2 cart with both flags off.](docs/screens/shop-vip-plain-rollback.png)
@@ -22,6 +24,7 @@ I reproduced two failures in a demo shop: (a) the old version cannot read data t
 - “A rollback that touches a database or reopens a fixed bug needs a person…” ([Flagsmith’s automatic rollback guide](https://www.flagsmith.com/blog/automatic-rollback))
 
 ## What it does
+
 1. Approve a rehearsal. Rewind saves test data, then switches the flag off in isolation.
 2. See what each user got after the change. If a check fails, the agent reads the evidence and proposes a Flagsmith setting change.
 3. Rewind tests up to three fixes against the same users and data. The agent cannot edit those tests. If none passes, staging stays untouched.
@@ -44,12 +47,15 @@ I reproduced two failures in a demo shop: (a) the old version cannot read data t
 I approve the rehearsal. Rewind rehearses the rollback so I can see what breaks. The AI reads the code and flag settings and proposes a fix. The checker verifies it. I approve the exact staging changes, then Rewind reproduces the failure on staging, applies the fix, and verifies again.
 
 ## Try it
+
 Pick **Case A** for an HTTP 500 on saved carts, **Case B** for the silent VIP override, or **Refusal** to see staging stay untouched. These are captured runs with real Flagsmith and model calls and scripted approvals. Replay executes nothing.
+
 From the checkout with Python 3.12, run `python -m pip install -e .` then `rewind ui --replay`. [![Open in Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/kittu181707/rewind?quickstart=1)
 
 I tested this on one demo shop with three users on a rehearsal and a staging environment; a pass means that journey works on staging.
 
 ## Run it live
+
 Install Flagsmith CLI v2 and use two dedicated test environments with disposable data. Run `flagsmith login` or set the management key below. Use the [demo config](examples/demo-shop/rewind.config.yaml) and put credentials in your shell or an ignored `.env`.
 
 | Variable | Purpose |
@@ -59,15 +65,19 @@ Install Flagsmith CLI v2 and use two dedicated test environments with disposable
 | `FLAGSMITH_ENV_KEY_TARGET` | Separate SDK key for `demo-target` (staging). |
 | `FLAGSMITH_API_KEY` | Optional CLI management key, in place of `flagsmith login`. |
 | `APP_VARIANT` | Optional. Use `no_compat` for Refusal after seeding `--case refusal`. |
+
 ```bash
 flagsmith environment list
 rewind seed --case a
 rewind ui --config examples/demo-shop/rewind.config.yaml
 ```
+
 Open the launcher file and enter `roll back checkout_v2`. Seed changes rehearsal settings only.
+
 The recorded runs used scripted approvals. Human-approved run: pending.
 
 ## How it uses Flagsmith
+
 | Feature | What Rewind checks or changes |
 | --- | --- |
 | Environments | Keeps rehearsal and staging separate, with distinct SDK keys and databases. |

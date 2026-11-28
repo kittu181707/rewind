@@ -10,6 +10,10 @@ Every checkout returned HTTP 200, but Alice and Carol still got the new checkout
 ## Why I built this
 I reproduced two failures in a demo shop: (a) the old version cannot read data the new one saved, so VIP carts get HTTP 500 after rollback; (b) a targeting override keeps some users on the new version even though the default is OFF, with no error.
 
+![The demo shop shows HTTP 500 for Alice's saved v2 cart with both flags off.](docs/screens/shop-vip-plain-rollback.png)
+
+*After a plain rollback, Alice's saved v2 cart fails on the old checkout.*
+
 - “Rehearse the rollback in staging.” ([Flagsmith’s rollback strategy](https://www.flagsmith.com/blog/rollback-strategy))
 - “A rollback that touches a database or reopens a fixed bug needs a person…” ([Flagsmith’s automatic rollback guide](https://www.flagsmith.com/blog/automatic-rollback))
 
@@ -22,6 +26,14 @@ I reproduced two failures in a demo shop: (a) the old version cannot read data t
 | Rewind does on its own | You decide |
 | --- | --- |
 | Reads evidence, tests fixes in rehearsal, and reports unexpected changes or failures on staging. | Whether to approve rehearsal, the exact staging plan, or a separate recovery action. |
+
+![Live Case A rehearsal approval and the Flagsmith inventory.](docs/screens/ui-case-a-gate1.png)
+
+*Approval 1: rehearse in this environment, with these allowed changes*
+
+![Live Case A staging approval with the per-user flag table and exact writes.](docs/screens/ui-case-a-gate2.png)
+
+*Approval 2: apply these exact changes to staging*
 
 ## Try it
 Pick **Case A** for an HTTP 500 on saved carts, **Case B** for the silent VIP override, or **Refusal** to see staging stay untouched. These are captured runs with real Flagsmith and model calls and scripted approvals. Replay executes nothing.

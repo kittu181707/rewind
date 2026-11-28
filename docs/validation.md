@@ -105,7 +105,7 @@ Full before/after SHA-256 on target for B1.1–B3.1: `141c5a5d62978c3215c169d1a7
 
 ## 4. UI, Replay, and Post-Freeze Feature Validation (`final-candidate`)
 
-Offline samples: [Case A report](sample-report-case-a.html), [Case B report](sample-report-case-b.html), [Refusal report](sample-report-refusal.html). Subprocesses of `rewind demo` with credentials cleared completed in **9.179 s** (Case A) and **9.305 s** (Refusal).
+Offline samples: [Case A report](sample-report-case-a.html), [Case B report](sample-report-case-b.html), [Refusal report](sample-report-refusal.html).
 
 At `final-candidate` (`dd87bf8`), **143 offline tests** passed, with live **scripted** validations confirming:
 
@@ -169,8 +169,7 @@ Additional `final-candidate` files changed after revision 2 (`orchestrator.py` r
 
 ```bash
 python -m pytest -q -m 'not live'
-python -m rewind demo
-python -m rewind demo --case refusal
+python -m rewind ui --export /tmp/rewind-replay
 python -m scripts.validate_live --batch refusal-protocol
 python -m scripts.validate_live --batch case-b
 python -m scripts.verify_e2e

@@ -19,7 +19,7 @@ TODO: Add why I built this (user answers pending).
 
 [![Open in Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/kittu181707/rewind?quickstart=1)
 
-Open the [captured browser replay](https://kittu181707.github.io/rewind/) or run `rewind demo` locally (`pip install -e . && rewind demo`) for a captured run with no keys required.
+Open the [captured browser replay](https://kittu181707.github.io/rewind/) or run `rewind ui --replay` locally (`pip install -e . && rewind ui --replay`) for a captured run with no keys required.
 
 ## Run it live
 

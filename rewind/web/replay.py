@@ -1,16 +1,16 @@
-"""Build browser replay assets from the same evidence as the terminal demo."""
+"""Build browser replay assets from captured run evidence."""
 
 from dataclasses import asdict
 from datetime import datetime
 import json
 from pathlib import Path
 
-from rewind.demo import CAPTURE_NAMES
 from rewind.events import RunEvent, attempt_event, failure_event, final_event, starting_flags
 from rewind.report import render_html
 from rewind.report.data import describe_write, public_report, redact_event
 
 
+CAPTURE_NAMES = {"a": "case-a", "b": "case-b", "refusal": "refusal"}
 STATIC = Path(__file__).with_name("static")
 
 

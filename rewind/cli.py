@@ -22,9 +22,6 @@ def build_parser() -> argparse.ArgumentParser:
     do_p.add_argument("request", help="Rollback request in plain words")
     do_p.add_argument("--config", required=True, help="Path to rewind.config.yaml")
 
-    demo_p = sub.add_parser("demo", help="Replay a captured run offline")
-    demo_p.add_argument("--case", choices=["a", "b", "refusal"], default="a", help="Capture to replay (default: Case A)")
-
     ui_p = sub.add_parser("ui", help="Open the local UI or export captured browser replays")
     mode = ui_p.add_mutually_exclusive_group(required=True)
     mode.add_argument("--config", help="Path to rewind.config.yaml for a live run")
@@ -96,16 +93,6 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(json.dumps(result, indent=2))
         return 0
-    if args.command == "demo":
-        from rewind.demo import replay
-        from rewind.report import ReportError
-
-        try:
-            replay(args.case, REPO_ROOT, Path.cwd())
-            return 0
-        except ReportError as exc:
-            print(f"rewind demo: {exc}", file=sys.stderr)
-            return 1
     if args.command == "ui":
         from rewind.config import ConfigError, load_config
         from rewind.report.data import redact_text

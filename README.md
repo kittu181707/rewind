@@ -53,18 +53,4 @@ Open the launcher file and enter `roll back checkout_v2`. Seed changes rehearsal
 | Defaults and segment overrides | Finds settings such as a VIP override that survives a rollback. |
 | [CLI and audit log](docs/how-rewind-uses-flagsmith.md) | Runs approved writes with allowlisted arguments and no shell. Check the provider audit log where available. |
 
-## Limits
-- A pass covers only the tested journey, users, and fixtures on staging. It does not establish production safety.
-- Fixes only change Flagsmith settings. Rewind does not edit app code, change user traits, or undo migrations.
-- The checker needs a trusted journey. It supports Boolean flags and equality-based segment rules. Flagsmith Change Requests are not supported.
-
-## Next steps
-- Record a run with a person approving both plans.
-- Time the same rollback with and without Rewind.
-- Test the integration with a second app.
-## Docs
-[Connect your app](docs/connect-your-app.md) · [Validation and checksums](docs/validation.md) · Other reports: [Case A](docs/sample-report-case-a.html), [Refusal](docs/sample-report-refusal.html)
-## AI tools used
-Author disclosure pending.
-
 [MIT License](LICENSE)

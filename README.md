@@ -15,11 +15,14 @@ TODO: Add why I built this (user answers pending).
 3. The verifier checks every configured user after three matching Flagsmith reads, rejecting fixes that leave any user broken.
 4. With your second approval on the exact operations and starting snapshot, Rewind reproduces the failure on staging, applies the fix, and verifies again.
 
+![Demo shop returning HTTP 500 for Alice's v2 cart under a plain rollback](docs/screens/shop-vip-plain-rollback.png)
+*Turning `checkout_v2` off alone leaves Alice's saved `v2` cart returning HTTP 500.*
+
 ## Try it
 
 [![Open in Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/kittu181707/rewind?quickstart=1)
 
-Open the [captured browser replay](https://kittu181707.github.io/rewind/) or run `rewind ui --replay` locally (`pip install -e . && rewind ui --replay`) for a captured run with no keys required.
+Open the [captured browser replay](https://kittu181707.github.io/rewind/) or run `pip install -e . && rewind ui --replay` locally (no keys required).
 
 ## Run it live
 
@@ -32,10 +35,11 @@ Open the [captured browser replay](https://kittu181707.github.io/rewind/) or run
 | `APP_VARIANT` | Optional shop flag (`no_compat` reproduces the refusal case) |
 
 ```bash
-flagsmith environment list
-rewind seed --case a
-rewind check --config examples/demo-shop/rewind.config.yaml
+flagsmith environment list && rewind seed --case a
+rewind ui --config examples/demo-shop/rewind.config.yaml  # then type "roll back checkout_v2"
 ```
+
+Terminal alternative: `rewind do "roll back checkout_v2" --config examples/demo-shop/rewind.config.yaml`.
 
 ## How it uses Flagsmith
 
@@ -46,15 +50,15 @@ rewind check --config examples/demo-shop/rewind.config.yaml
 | Defaults & segment overrides | Tests compatibility defaults and removes group overrides that block rollbacks. |
 | CLI & audit log | Reads snapshots and applies approved changes; see [docs/how-rewind-uses-flagsmith.md](docs/how-rewind-uses-flagsmith.md). |
 
-As noted in [Flagsmith's rollback strategy](https://www.flagsmith.com/blog/rollback-strategy) ("Rehearse the rollback in staging.") and [Flagsmith's automatic rollback guide](https://www.flagsmith.com/blog/automatic-rollback) ("A rollback that touches a database or reopens a fixed bug needs a person..."), Rewind keeps a person in charge at both gates.
+Rewind uses the Flagsmith CLI instead of the MCP server because every write is an allowlisted argument list run without a shell. It adds an isolated rehearsal, a fixed verifier the model cannot edit, drift checks, and an exact approval plan, keeping a person in charge at both gates per [Flagsmith's rollback strategy](https://www.flagsmith.com/blog/rollback-strategy) and [automatic rollback guide](https://www.flagsmith.com/blog/automatic-rollback).
 
 ## Limits & next steps
 
-- Pass results cover the tested journey and fixture database only, not all production traffic or database migrations.
+- Pass results cover the tested journey and fixture database only, not production traffic or database migrations.
 - Approvals use scripted validation in automated captures; interactive human run evidence pending.
-- Approvals are enforced by an in-process approval registry (`approvals.py`) and Flagsmith Change Requests are not supported.
+- Approvals use an in-process registry (`approvals.py`); Flagsmith Change Requests are not supported.
 - The planner models Boolean equality rules only and Gemini fallback is disabled in live runs.
-- Next steps include recording interactive human approvals, adding another example app, and supporting multi-condition rules.
+- Next steps: record interactive human approvals, add another example app, and support multi-condition rules.
 
 ## Docs
 

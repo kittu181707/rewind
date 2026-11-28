@@ -29,7 +29,7 @@ Never place API keys, SDK keys, or credentials inside `rewind.config.yaml`. Refe
 
 ## 3. Journey JSON contract
 
-The journey command (`prepare` and `verify`) is language-agnostic. It prints **one JSON object** to stdout and exits `0` (pass) or `1` (fail):
+Your journey command (`prepare` and `verify`) is language-agnostic. It prints **one JSON object** to stdout and exits `0` (pass) or `1` (fail):
 
 ```json
 {
@@ -62,4 +62,4 @@ Requirements verified by both the journey command and `rewind/verifier.py`:
 2. Assertions must check the `effective_flags` and `executed_version` returned in the same HTTP response as the cart/checkout action, not only `/eval`.
 3. In `prepare`, affected users exercise the new path (`v2`) and persist their latest state while the control user keeps their pre-rollout baseline state.
 4. In `verify`, every configured user (both `affected` and `control`) must have a `checkout` step with HTTP `200`, matching `executed_version`, preserved identifiers/totals, and unchanged user traits.
-5. Rewind automatically appends `--config` and separate per-environment `--state-file` arguments to the journey command. See [examples/demo-shop/journey.py](../examples/demo-shop/journey.py) for the complete reference implementation.
+5. Rewind automatically appends `--config` and separate per-environment `--state-file` arguments to the journey command. See [examples/demo-shop/journey.py](../examples/demo-shop/journey.py) for the reference implementation.

@@ -1,6 +1,6 @@
 # Live Demo Shop Beside a Staging Run
 
-You can leave a second read-only `examples/demo-shop/app.py` storefront open on port `8003` against `demo-target` while running `rewind ui --config examples/demo-shop/rewind.config.yaml` (which uses ports `8001` for rehearsal and `8002` for its staging fixture).
+You can leave a second `examples/demo-shop/app.py` storefront (which makes no Flagsmith changes) open on port `8003` against `demo-target` while running `rewind ui --config examples/demo-shop/rewind.config.yaml` (which uses ports `8001` for rehearsal and `8002` for its staging fixture).
 
 ## Setup
 
